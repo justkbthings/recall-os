@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Desktop release output and local recovery data
+out/
+signed-out/
+package-out/
+.desktop-staging/
+recovery/
+Recall-OS-Setup.exe
+/RecallOS-Public-Certificate.cer
+*.nupkg
+
+# Private signing keys must never be committed
+*.pfx
+*.p12
+*.pvk
+*.pem
+*.key
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
