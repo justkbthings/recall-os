@@ -1,0 +1,35 @@
+# Local agent/workspace metadata
+.agents/
+
+# User study data and recovery snapshots
+*.db
+*.db-journal
+recall-os/recovery/
+study_data*.json
+
+# Dependencies and generated web assets
+recall-os/node_modules/
+recall-os/dist/
+recall-os/.desktop-staging/
+
+# Generated desktop releases
+recall-os/out/
+recall-os/signed-out/
+recall-os/package-out/
+recall-os/Recall-OS-Setup.exe
+recall-os/RecallOS-Public-Certificate.cer
+*.nupkg
+*.exe
+
+# Private signing material must never be committed
+*.pfx
+*.p12
+*.pvk
+*.pem
+*.key
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db
+
