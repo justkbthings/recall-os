@@ -1,12 +1,14 @@
 const { spawn, spawnSync } = require('node:child_process')
+const os = require('node:os')
 const path = require('node:path')
 
 const projectDirectory = path.resolve(__dirname, '..')
 const appVersion = require(path.join(projectDirectory, 'package.json')).version
 const verifyPackagedApp = process.argv.includes('--packaged')
 const verifyInstalledApp = process.argv.includes('--installed')
+const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local')
 const electronExecutable = verifyInstalledApp
-  ? path.join('C:\\Users\\Admin\\AppData\\Local\\RecallOS', `app-${appVersion}`, 'RecallOS.exe')
+  ? path.join(localAppData, 'RecallOS', `app-${appVersion}`, 'RecallOS.exe')
   : verifyPackagedApp
     ? path.join(projectDirectory, 'signed-out', 'RecallOS-win32-x64', 'RecallOS.exe')
     : require('electron')

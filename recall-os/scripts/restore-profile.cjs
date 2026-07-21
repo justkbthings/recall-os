@@ -1,21 +1,36 @@
 const fs = require('node:fs/promises')
 const { spawn, spawnSync } = require('node:child_process')
+const os = require('node:os')
 const path = require('node:path')
 
 const projectDirectory = path.resolve(__dirname, '..')
 const appVersion = require(path.join(projectDirectory, 'package.json')).version
+const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local')
 const installedExecutable = path.join(
-  'C:\\Users\\Admin\\AppData\\Local\\RecallOS',
+  localAppData,
+  'RecallOS',
   `app-${appVersion}`,
   'RecallOS.exe',
 )
-const recoveryFile = path.join(
-  projectDirectory,
-  'recovery',
-  'study-data-recovered-2026-07-21.json',
-)
+const recoveryDirectory = path.join(projectDirectory, 'recovery')
 const debugPort = 9342
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+async function findRecoveryFile() {
+  const requestedFile = process.argv.slice(2).find((argument) => argument.endsWith('.json'))
+  if (requestedFile) return path.resolve(requestedFile)
+
+  const files = await fs.readdir(recoveryDirectory)
+  const recoveryFiles = files
+    .filter((file) => file.startsWith('study-data-recovered-') && file.endsWith('.json'))
+    .sort()
+
+  const latestFile = recoveryFiles.at(-1)
+  if (!latestFile) {
+    throw new Error('No recovered study-data JSON file was found.')
+  }
+  return path.join(recoveryDirectory, latestFile)
+}
 
 async function findPage() {
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -63,6 +78,7 @@ async function evaluate(webSocketUrl, expression) {
 }
 
 async function main() {
+  const recoveryFile = await findRecoveryFile()
   const recoveryText = await fs.readFile(recoveryFile, 'utf8')
   const recovery = JSON.parse(recoveryText)
   if (!Array.isArray(recovery.questions) || recovery.questions.length === 0) {

@@ -1,15 +1,18 @@
-const fs = require('node:fs')
 const fsPromises = require('node:fs/promises')
+const os = require('node:os')
 const path = require('node:path')
 
+const roamingAppData = process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming')
 const levelDbDirectory = path.join(
-  'C:\\Users\\Admin\\AppData\\Roaming\\Recall OS',
+  roamingAppData,
+  'Recall OS',
   'Local Storage',
   'leveldb',
 )
 const projectDirectory = path.resolve(__dirname, '..')
 const recoveryDirectory = path.join(projectDirectory, 'recovery')
-const recoveryFile = path.join(recoveryDirectory, 'study-data-recovered-2026-07-21.json')
+const recoveryDate = new Date().toISOString().slice(0, 10)
+const recoveryFile = path.join(recoveryDirectory, `study-data-recovered-${recoveryDate}.json`)
 
 function extractJsonArrays(text, storageKey) {
   const candidates = []
