@@ -5,6 +5,20 @@ spaced repetition. It provides daily due-question sessions, five-level review
 scheduling, question and course management, forgetting-curve analytics, dated
 study history, and JSON backup/import.
 
+## Daily Practice and memory tracking
+
+- Select an active course, chapter, and subchapter before beginning a session.
+- Review the oldest due memory first within the selected subchapter.
+- See live chapter and subchapter mastery progress throughout the session.
+- Track the total number of attempts on every question.
+- Inspect an estimated per-question retention line graph in Analytics. Each
+  timestamped review resets the curve and the selected rating controls the next
+  decay interval.
+
+Review-history timestamps were introduced in version 1.3.0. Existing attempt
+counts are preserved during migration, while precise curve events accumulate
+for all new reviews.
+
 ## Ownership
 
 Copyright © 2026 **Karabo Goodwill Nkambule**. All rights reserved.
@@ -60,4 +74,3 @@ self-signed publisher chain.
 The public `.cer` file is safe to distribute. Never commit or share a `.pfx`,
 private key, certificate password, authentication token, local study database,
 or recovery snapshot.
-
