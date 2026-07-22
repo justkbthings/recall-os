@@ -42,6 +42,13 @@ import {
 
 type CourseCode = string;
 type NavigationId = "practice" | "questions" | "analytics" | "settings";
+type RecallLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface ReviewAttempt {
+  reviewedAt: string;
+  level: RecallLevel;
+  nextReviewDate: string;
+}
 
 export interface Question {
   id: string;
@@ -50,17 +57,18 @@ export interface Question {
   subchapter: string;
   question: string;
   answer: string;
-  level: 1 | 2 | 3 | 4 | 5;
+  level: RecallLevel;
   addedAt: string;
   lastReviewed: string;
   nextReviewDate: string;
   reviewCount: number;
+  reviewHistory: ReviewAttempt[];
 }
 
 const STORAGE_KEY = "active-recall.questions.v1";
 const ACTIVITY_STORAGE_KEY = "active-recall.activity-dates.v1";
 const COURSES_STORAGE_KEY = "active-recall.courses.v1";
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 const COPYRIGHT_OWNER = "Karabo Goodwill Nkambule";
 const LEGACY_DEFAULT_COURSES: CourseCode[] = ["CSC3003S", "INF3012S", "AST1000S"];
 const REVIEW_LEVELS = [
@@ -82,6 +90,25 @@ const NAVIGATION: Array<{
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+function normalizeReviewAttempt(value: unknown): ReviewAttempt | null {
+  if (!value || typeof value !== "object") return null;
+  const attempt = value as Partial<ReviewAttempt>;
+  if (
+    typeof attempt.reviewedAt !== "string" ||
+    !Number.isInteger(attempt.level) ||
+    Number(attempt.level) < 1 ||
+    Number(attempt.level) > 5 ||
+    typeof attempt.nextReviewDate !== "string"
+  ) {
+    return null;
+  }
+  return {
+    reviewedAt: attempt.reviewedAt,
+    level: attempt.level as RecallLevel,
+    nextReviewDate: attempt.nextReviewDate,
+  };
+}
+
 function normalizeQuestion(value: unknown): Question | null {
   if (!value || typeof value !== "object") return null;
 
@@ -101,6 +128,30 @@ function normalizeQuestion(value: unknown): Question | null {
 
   if (!hasRequiredFields) return null;
 
+  const lastReviewed =
+    typeof question.lastReviewed === "string"
+      ? question.lastReviewed
+      : question.nextReviewDate!;
+  const reviewCount =
+    typeof question.reviewCount === "number" && question.reviewCount >= 0
+      ? question.reviewCount
+      : 0;
+  const storedReviewHistory = Array.isArray(question.reviewHistory)
+    ? question.reviewHistory
+        .map(normalizeReviewAttempt)
+        .filter((attempt): attempt is ReviewAttempt => attempt !== null)
+    : [];
+  const reviewHistory =
+    storedReviewHistory.length || reviewCount === 0
+      ? storedReviewHistory
+      : [
+          {
+            reviewedAt: lastReviewed,
+            level: question.level as RecallLevel,
+            nextReviewDate: question.nextReviewDate!,
+          },
+        ];
+
   return {
     id: question.id!,
     course: question.course!.trim(),
@@ -115,15 +166,10 @@ function normalizeQuestion(value: unknown): Question | null {
         : typeof question.lastReviewed === "string"
           ? question.lastReviewed
           : question.nextReviewDate!,
-    lastReviewed:
-      typeof question.lastReviewed === "string"
-        ? question.lastReviewed
-        : question.nextReviewDate!,
+    lastReviewed,
     nextReviewDate: question.nextReviewDate!,
-    reviewCount:
-      typeof question.reviewCount === "number" && question.reviewCount >= 0
-        ? question.reviewCount
-        : 0,
+    reviewCount,
+    reviewHistory,
   };
 }
 
@@ -279,6 +325,23 @@ function formatDate(dateKey: string): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(parsedDate);
+}
+
+function parseStudyTimestamp(value: string): number {
+  const parsedDate = new Date(value.includes("T") ? value : `${value}T12:00:00`);
+  return parsedDate.getTime();
+}
+
+function formatReviewTimestamp(value: string): string {
+  const parsedDate = new Date(value.includes("T") ? value : `${value}T12:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) return "Unknown review time";
+  return new Intl.DateTimeFormat("en-ZA", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(parsedDate);
 }
 
@@ -565,6 +628,267 @@ const RATING_STYLES = {
   cyan: "border-cyan-400/20 bg-cyan-400/[0.06] text-cyan-300 hover:border-cyan-400/40 hover:bg-cyan-400/10",
 } as const;
 
+function ScopeProgressCard({
+  label,
+  name,
+  questions,
+  today,
+  accent,
+}: {
+  label: string;
+  name: string;
+  questions: Question[];
+  today: string;
+  accent: "cyan" | "violet";
+}) {
+  const mastered = questions.filter((question) => question.level >= 4).length;
+  const due = questions.filter((question) => question.nextReviewDate <= today).length;
+  const masteryPercent = questions.length
+    ? Math.round((mastered / questions.length) * 100)
+    : 0;
+  const accentStyles =
+    accent === "cyan"
+      ? {
+          border: "border-cyan-400/15",
+          label: "text-cyan-300/70",
+          bar: "from-cyan-400 to-sky-400",
+        }
+      : {
+          border: "border-violet-400/15",
+          label: "text-violet-300/70",
+          bar: "from-violet-400 to-fuchsia-400",
+        };
+
+  return (
+    <article
+      data-scope-progress={label.toLowerCase()}
+      className={`rounded-2xl border ${accentStyles.border} bg-slate-950/55 p-4 text-left`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${accentStyles.label}`}>
+            {label} progress
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-200">{name}</p>
+        </div>
+        <span className="shrink-0 text-lg font-semibold text-slate-100">{masteryPercent}%</span>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${accentStyles.bar} transition-all duration-500`}
+          style={{ width: `${masteryPercent}%` }}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-slate-600">
+        <span>{mastered} of {questions.length} mastered</span>
+        <span>{due} due today</span>
+      </div>
+    </article>
+  );
+}
+
+const RETENTION_STABILITY_DAYS: Record<RecallLevel, number> = {
+  1: 0.5,
+  2: 1,
+  3: 3,
+  4: 7,
+  5: 14,
+};
+const MILLISECONDS_PER_DAY = 86_400_000;
+
+function retentionAfterDays(daysElapsed: number, level: RecallLevel): number {
+  const stability = RETENTION_STABILITY_DAYS[level];
+  const decayConstant = stability / -Math.log(0.8);
+  return Math.max(40, 100 * Math.exp(-Math.max(0, daysElapsed) / decayConstant));
+}
+
+function QuestionForgettingCurve({ question }: { question: Question }) {
+  const chartWidth = 800;
+  const chartHeight = 300;
+  const padding = { top: 38, right: 24, bottom: 46, left: 54 };
+  const plotWidth = chartWidth - padding.left - padding.right;
+  const plotHeight = chartHeight - padding.top - padding.bottom;
+  const addedTime = parseStudyTimestamp(question.addedAt);
+  const safeAddedTime = Number.isFinite(addedTime) ? addedTime : Date.now();
+  const events = [
+    {
+      reviewedAt: question.addedAt,
+      time: safeAddedTime,
+      level: 1 as RecallLevel,
+      label: "First learned",
+    },
+    ...question.reviewHistory
+      .map((attempt, index) => ({
+        reviewedAt: attempt.reviewedAt,
+        time: parseStudyTimestamp(attempt.reviewedAt),
+        level: attempt.level,
+        label: `Review ${index + 1} · Level ${attempt.level}`,
+      }))
+      .filter((event) => Number.isFinite(event.time) && event.time >= safeAddedTime),
+  ].sort((left, right) => left.time - right.time);
+  const todayTime = parseStudyTimestamp(getLocalDateKey());
+  const nextReviewTime = parseStudyTimestamp(question.nextReviewDate);
+  const latestEventTime = events.at(-1)?.time ?? safeAddedTime;
+  const endTime = Math.max(
+    safeAddedTime + MILLISECONDS_PER_DAY,
+    todayTime,
+    Number.isFinite(nextReviewTime) ? nextReviewTime : safeAddedTime,
+    latestEventTime + MILLISECONDS_PER_DAY,
+  );
+  const totalDays = Math.max(
+    1,
+    Math.ceil((endTime - safeAddedTime) / MILLISECONDS_PER_DAY),
+  );
+  const xPosition = (day: number) =>
+    padding.left + (Math.min(totalDays, Math.max(0, day)) / totalDays) * plotWidth;
+  const yPosition = (retention: number) =>
+    padding.top + ((100 - Math.min(100, Math.max(40, retention))) / 60) * plotHeight;
+  const dayForTime = (time: number) => (time - safeAddedTime) / MILLISECONDS_PER_DAY;
+  const pointPairs: Array<[number, number]> = [];
+
+  events.forEach((event, index) => {
+    const startDay = Math.max(0, dayForTime(event.time));
+    const endDay = Math.min(
+      totalDays,
+      index + 1 < events.length ? dayForTime(events[index + 1].time) : totalDays,
+    );
+    const step = Math.max(0.08, totalDays / 140);
+    pointPairs.push([xPosition(startDay), yPosition(100)]);
+    for (let day = startDay + step; day < endDay; day += step) {
+      pointPairs.push([
+        xPosition(day),
+        yPosition(retentionAfterDays(day - startDay, event.level)),
+      ]);
+    }
+    pointPairs.push([
+      xPosition(endDay),
+      yPosition(retentionAfterDays(endDay - startDay, event.level)),
+    ]);
+  });
+
+  const tickStep = totalDays <= 7 ? 1 : Math.max(1, Math.ceil(totalDays / 7));
+  const dayTicks: number[] = [];
+  for (let day = 0; day <= totalDays; day += tickStep) dayTicks.push(day);
+  if (dayTicks.at(-1) !== totalDays) dayTicks.push(totalDays);
+  const latestPastEvent = [...events]
+    .reverse()
+    .find((event) => event.time <= todayTime) ?? events[0];
+  const currentRetention = Math.round(
+    retentionAfterDays(
+      (todayTime - latestPastEvent.time) / MILLISECONDS_PER_DAY,
+      latestPastEvent.level,
+    ),
+  );
+  const recordedAttempts = question.reviewHistory.length;
+
+  return (
+    <div data-testid="question-forgetting-curve" className="rounded-2xl border border-slate-800 bg-slate-950/45 p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-slate-200">Estimated retention curve</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Reviews reset retention to 100%; stronger ratings slow the next decay.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-xl border border-violet-400/15 bg-violet-400/[0.06] px-3 py-2 text-xs text-violet-200">
+            {question.reviewCount} attempt{question.reviewCount === 1 ? "" : "s"}
+          </span>
+          <span className="rounded-xl border border-cyan-400/15 bg-cyan-400/[0.06] px-3 py-2 text-xs text-cyan-200">
+            ~{currentRetention}% today
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          role="img"
+          aria-label={`Estimated forgetting curve for ${question.question}`}
+          className="min-w-[620px] w-full"
+        >
+          <defs>
+            <linearGradient id={`curve-${question.id.replace(/[^a-zA-Z0-9]/g, "")}`} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#22d3ee" />
+              <stop offset="100%" stopColor="#a78bfa" />
+            </linearGradient>
+          </defs>
+          {[100, 80, 60, 40].map((retention) => (
+            <g key={retention}>
+              <line
+                x1={padding.left}
+                x2={chartWidth - padding.right}
+                y1={yPosition(retention)}
+                y2={yPosition(retention)}
+                stroke={retention === 80 ? "#f59e0b" : "#1e293b"}
+                strokeDasharray={retention === 80 ? "5 6" : undefined}
+                strokeOpacity={retention === 80 ? 0.45 : 0.85}
+              />
+              <text x={padding.left - 10} y={yPosition(retention) + 4} textAnchor="end" fill="#64748b" fontSize="11">
+                {retention}%
+              </text>
+            </g>
+          ))}
+          {dayTicks.map((day) => (
+            <g key={day}>
+              <line
+                x1={xPosition(day)}
+                x2={xPosition(day)}
+                y1={padding.top}
+                y2={chartHeight - padding.bottom}
+                stroke="#1e293b"
+                strokeOpacity="0.55"
+              />
+              <text x={xPosition(day)} y={chartHeight - 21} textAnchor="middle" fill="#64748b" fontSize="11">
+                {day}
+              </text>
+            </g>
+          ))}
+          <text x={18} y={chartHeight / 2} textAnchor="middle" fill="#64748b" fontSize="11" transform={`rotate(-90 18 ${chartHeight / 2})`}>
+            Estimated retention
+          </text>
+          <text x={padding.left + plotWidth / 2} y={chartHeight - 3} textAnchor="middle" fill="#64748b" fontSize="11">
+            Days since first learned
+          </text>
+          <polyline
+            points={pointPairs.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ")}
+            fill="none"
+            stroke={`url(#curve-${question.id.replace(/[^a-zA-Z0-9]/g, "")})`}
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {events.map((event, index) => {
+            const x = xPosition(dayForTime(event.time));
+            return (
+              <g key={`${event.reviewedAt}-${index}`}>
+                <line x1={x} x2={x} y1={padding.top} y2={chartHeight - padding.bottom} stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="4 5" strokeOpacity="0.6" />
+                <circle cx={x} cy={yPosition(100)} r="5" fill={index === 0 ? "#f59e0b" : "#22d3ee"} stroke="#0f172a" strokeWidth="2">
+                  <title>{event.label} · {formatReviewTimestamp(event.reviewedAt)}</title>
+                </circle>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-600">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400" />First learned</span>
+          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-cyan-400" />Recorded review</span>
+          <span className="flex items-center gap-1.5"><span className="h-px w-4 border-t border-dashed border-amber-400/60" />80% review threshold</span>
+        </div>
+        <span>
+          {recordedAttempts} of {question.reviewCount} attempt{question.reviewCount === 1 ? "" : "s"} timestamped
+        </span>
+      </div>
+      <p className="mt-3 text-[10px] leading-4 text-slate-700">
+        This is a study estimate derived from your review ratings and schedule, not a direct measurement of memory.
+      </p>
+    </div>
+  );
+}
+
 function DailyPractice({
   questions,
   courses,
@@ -573,24 +897,60 @@ function DailyPractice({
   setActivityDates,
   activeCourse,
 }: DailyPracticeProps) {
-  const [reviewFilter, setReviewFilter] = useState<"all" | CourseCode>("all");
+  const [selectedChapter, setSelectedChapter] = useState("");
+  const [selectedSubchapter, setSelectedSubchapter] = useState("");
   const [queueIds, setQueueIds] = useState<string[]>([]);
   const [sessionTotal, setSessionTotal] = useState(0);
   const [sessionActive, setSessionActive] = useState(false);
   const [answerVisible, setAnswerVisible] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
 
-  useEffect(() => {
-    if (reviewFilter !== "all" && !courses.includes(reviewFilter)) {
-      setReviewFilter("all");
-    }
-  }, [courses, reviewFilter]);
-
   const courseQuestions = useMemo(
     () => questions.filter((question) => question.course === activeCourse),
     [activeCourse, questions],
   );
   const today = getLocalDateKey();
+  const chapterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          courseQuestions
+            .map((question) => question.chapter.trim())
+            .filter(Boolean),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [courseQuestions],
+  );
+  const subchapterOptions = useMemo(
+    () =>
+      selectedChapter
+        ? Array.from(
+            new Set(
+              courseQuestions
+                .filter((question) => question.chapter === selectedChapter)
+                .map((question) => question.subchapter.trim())
+                .filter(Boolean),
+            ),
+          ).sort((left, right) => left.localeCompare(right))
+        : [],
+    [courseQuestions, selectedChapter],
+  );
+  const selectedChapterQuestions = useMemo(
+    () =>
+      selectedChapter
+        ? courseQuestions.filter((question) => question.chapter === selectedChapter)
+        : [],
+    [courseQuestions, selectedChapter],
+  );
+  const selectedSubchapterQuestions = useMemo(
+    () =>
+      selectedChapter && selectedSubchapter
+        ? selectedChapterQuestions.filter(
+            (question) => question.subchapter === selectedSubchapter,
+          )
+        : [],
+    [selectedChapter, selectedChapterQuestions, selectedSubchapter],
+  );
   const dueToday = courseQuestions.filter(
     (question) => question.nextReviewDate <= today,
   ).length;
@@ -601,23 +961,52 @@ function DailyPractice({
   const reviewStreak = calculateReviewStreak(activityDates);
   const dueQuestions = useMemo(
     () =>
-      questions.filter(
-        (question) =>
-          question.nextReviewDate <= today &&
-          (reviewFilter === "all" || question.course === reviewFilter),
-      ),
-    [questions, reviewFilter, today],
+      selectedSubchapterQuestions
+        .filter((question) => question.nextReviewDate <= today)
+        .sort(
+          (left, right) =>
+            left.nextReviewDate.localeCompare(right.nextReviewDate) ||
+            left.addedAt.localeCompare(right.addedAt) ||
+            left.id.localeCompare(right.id),
+        ),
+    [selectedSubchapterQuestions, today],
   );
   const currentQuestion = questions.find((question) => question.id === queueIds[0]);
+  const scopeSelected = Boolean(selectedChapter && selectedSubchapter);
+  const sessionCompletedCount = Math.max(0, sessionTotal - queueIds.length);
 
   useEffect(() => {
+    setSelectedChapter("");
+    setSelectedSubchapter("");
     setSessionActive(false);
     setSessionComplete(false);
     setQueueIds([]);
     setAnswerVisible(false);
-  }, [reviewFilter]);
+  }, [activeCourse]);
+
+  useEffect(() => {
+    if (selectedChapter && !chapterOptions.includes(selectedChapter)) {
+      setSelectedChapter("");
+      setSelectedSubchapter("");
+    }
+  }, [chapterOptions, selectedChapter]);
+
+  useEffect(() => {
+    if (selectedSubchapter && !subchapterOptions.includes(selectedSubchapter)) {
+      setSelectedSubchapter("");
+    }
+  }, [selectedSubchapter, subchapterOptions]);
+
+  useEffect(() => {
+    setSessionActive(false);
+    setSessionComplete(false);
+    setSessionTotal(0);
+    setQueueIds([]);
+    setAnswerVisible(false);
+  }, [selectedChapter, selectedSubchapter]);
 
   function startSession() {
+    if (!scopeSelected || dueQuestions.length === 0) return;
     const nextQueue = dueQuestions.map((question) => question.id);
     setQueueIds(nextQueue);
     setSessionTotal(nextQueue.length);
@@ -629,6 +1018,7 @@ function DailyPractice({
   function rateCurrentQuestion(level: Question["level"], intervalDays: number) {
     if (!currentQuestion) return;
     const nextReviewDate = addDaysToDate(today, intervalDays);
+    const reviewedAt = new Date().toISOString();
     setQuestions((currentQuestions) =>
       currentQuestions.map((question) =>
         question.id === currentQuestion.id
@@ -638,6 +1028,10 @@ function DailyPractice({
               lastReviewed: today,
               nextReviewDate,
               reviewCount: question.reviewCount + 1,
+              reviewHistory: [
+                ...question.reviewHistory,
+                { reviewedAt, level, nextReviewDate },
+              ],
             }
           : question,
       ),
@@ -725,34 +1119,92 @@ function DailyPractice({
               Turn what you studied into knowledge you can retrieve.
             </h3>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500">
-              Choose the full due queue or focus on one course. Only questions scheduled
-              on or before {formatDate(today)} are included.
+              Choose a chapter, then a subchapter. Recall OS reviews the oldest due
+              memories first, never simply the most recently added question.
             </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-2" aria-label="Practice queue filter">
-              <button
-                type="button"
-                onClick={() => setReviewFilter("all")}
-                className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${reviewFilter === "all" ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200" : "border-slate-800 bg-slate-950/50 text-slate-500 hover:text-slate-300"}`}
-              >
-                All Due Questions
-              </button>
-              {courses.map((course) => (
-                <button
-                  key={course}
-                  type="button"
-                  onClick={() => setReviewFilter(course)}
-                  className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${reviewFilter === course ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200" : "border-slate-800 bg-slate-950/50 text-slate-500 hover:text-slate-300"}`}
-                >
-                  {course}
-                </button>
-              ))}
+            <div className="mt-6 flex items-center gap-2 rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1.5 text-xs text-slate-500">
+              <BookOpen className="size-3.5 text-cyan-300/70" />
+              Course: <span className="font-semibold text-slate-300">{activeCourse || "Choose a course above"}</span>
             </div>
+            <div className="mt-5 grid w-full gap-3 text-left sm:grid-cols-2" aria-label="Practice scope selector">
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <span className="grid size-5 place-items-center rounded-full bg-cyan-400/10 text-[10px] text-cyan-300">1</span>
+                  Chapter
+                </span>
+                <select
+                  aria-label="Choose practice chapter"
+                  value={selectedChapter}
+                  onChange={(event) => {
+                    setSelectedChapter(event.target.value);
+                    setSelectedSubchapter("");
+                  }}
+                  disabled={!activeCourse || chapterOptions.length === 0}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Choose a chapter</option>
+                  {chapterOptions.map((chapter) => (
+                    <option key={chapter} value={chapter}>{chapter}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <span className="grid size-5 place-items-center rounded-full bg-violet-400/10 text-[10px] text-violet-300">2</span>
+                  Subchapter
+                </span>
+                <select
+                  aria-label="Choose practice subchapter"
+                  value={selectedSubchapter}
+                  onChange={(event) => setSelectedSubchapter(event.target.value)}
+                  disabled={!selectedChapter || subchapterOptions.length === 0}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-violet-400/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Choose a subchapter</option>
+                  {subchapterOptions.map((subchapter) => (
+                    <option key={subchapter} value={subchapter}>{subchapter}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {selectedChapter && (
+              <div className={`mt-4 grid w-full gap-3 ${selectedSubchapter ? "sm:grid-cols-2" : ""}`}>
+                <ScopeProgressCard
+                  label="Chapter"
+                  name={selectedChapter}
+                  questions={selectedChapterQuestions}
+                  today={today}
+                  accent="cyan"
+                />
+                {selectedSubchapter && (
+                  <ScopeProgressCard
+                    label="Subchapter"
+                    name={selectedSubchapter}
+                    questions={selectedSubchapterQuestions}
+                    today={today}
+                    accent="violet"
+                  />
+                )}
+              </div>
+            )}
+            {!chapterOptions.length && activeCourse && (
+              <p className="mt-4 text-xs text-amber-300/80">
+                This course has no questions yet. Add one in Question Bank to begin.
+              </p>
+            )}
+            {scopeSelected && dueQuestions.length === 0 && (
+              <p className="mt-4 flex items-center gap-2 text-xs text-emerald-300/80">
+                <CheckCircle2 className="size-4" /> This subchapter is all caught up for {formatDate(today)}.
+              </p>
+            )}
             <button
               type="button"
+              data-testid="start-practice-session"
               onClick={startSession}
-              className="group mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_35px_rgba(248,250,252,0.12)] transition hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              disabled={!scopeSelected || dueQuestions.length === 0}
+              className="group mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_35px_rgba(248,250,252,0.12)] transition hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600 disabled:shadow-none"
             >
-              Start Daily Recall Session
+              Start Selected Recall Session
               <span className="rounded-md bg-slate-950/10 px-1.5 py-0.5 text-xs">{dueQuestions.length}</span>
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </button>
@@ -769,8 +1221,12 @@ function DailyPractice({
               Daily Recall Complete! All target memories reinforced.
             </h3>
             <p className="mt-3 text-sm text-slate-500">
-              {sessionTotal} scheduled question{sessionTotal === 1 ? "" : "s"} reviewed for {formatDate(today)}.
+              {sessionTotal} scheduled question{sessionTotal === 1 ? "" : "s"} reviewed from {selectedChapter} · {selectedSubchapter}.
             </p>
+            <div className="mt-5 grid w-full gap-3 text-left sm:grid-cols-2">
+              <ScopeProgressCard label="Chapter" name={selectedChapter} questions={selectedChapterQuestions} today={today} accent="cyan" />
+              <ScopeProgressCard label="Subchapter" name={selectedSubchapter} questions={selectedSubchapterQuestions} today={today} accent="violet" />
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -786,6 +1242,10 @@ function DailyPractice({
 
         {sessionActive && currentQuestion && (
           <div className="relative mx-auto max-w-3xl">
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <ScopeProgressCard label="Chapter" name={selectedChapter} questions={selectedChapterQuestions} today={today} accent="cyan" />
+              <ScopeProgressCard label="Subchapter" name={selectedSubchapter} questions={selectedSubchapterQuestions} today={today} accent="violet" />
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200">{currentQuestion.course}</span>
@@ -797,17 +1257,18 @@ function DailyPractice({
             <div className="mt-4 h-1 overflow-hidden rounded-full bg-slate-800">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-violet-400 transition-all duration-500"
-                style={{ width: `${sessionTotal ? ((sessionTotal - queueIds.length + 1) / sessionTotal) * 100 : 0}%` }}
+                style={{ width: `${sessionTotal ? (sessionCompletedCount / sessionTotal) * 100 : 0}%` }}
               />
             </div>
 
             <div className="mt-5 rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-8">
-              <div className="flex items-center justify-between gap-4 text-[11px] text-slate-600">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-600">
                 <span className="flex items-center gap-1.5"><CalendarPlus className="size-3.5" />Added {formatDate(currentQuestion.addedAt)}</span>
+                <span className="flex items-center gap-1.5 text-violet-300/70"><RotateCcw className="size-3.5" />{currentQuestion.reviewCount} attempt{currentQuestion.reviewCount === 1 ? "" : "s"}</span>
                 <span className="flex items-center gap-1.5"><CalendarCheck2 className="size-3.5" />Due {formatDate(currentQuestion.nextReviewDate)}</span>
               </div>
               <p className="mt-7 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/70">Question</p>
-              <p className="mt-3 whitespace-pre-wrap text-xl font-medium leading-8 tracking-tight text-slate-100 sm:text-2xl">{currentQuestion.question}</p>
+              <p data-testid="practice-question" className="mt-3 whitespace-pre-wrap text-xl font-medium leading-8 tracking-tight text-slate-100 sm:text-2xl">{currentQuestion.question}</p>
 
               {!answerVisible ? (
                 <button
@@ -947,6 +1408,7 @@ function AddQuestionModal({
         lastReviewed: today,
         nextReviewDate: today,
         reviewCount: 0,
+        reviewHistory: [],
       });
     }
     onClose();
@@ -1374,6 +1836,10 @@ function QuestionBank({
                         <CalendarCheck2 className="size-3.5" />
                         {formatDate(question.nextReviewDate)}
                       </span>
+                      <span className="flex items-center gap-1 rounded-lg bg-violet-400/[0.06] px-2 py-1 text-[11px] font-semibold text-violet-300/70">
+                        <RotateCcw className="size-3" />
+                        {question.reviewCount} attempt{question.reviewCount === 1 ? "" : "s"}
+                      </span>
                       <span className="rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-500">
                         Level {question.level}
                       </span>
@@ -1409,7 +1875,7 @@ function QuestionBank({
                         </p>
                       </div>
                     </div>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5">
                         <CalendarPlus className="size-4 text-slate-600" />
                         <div>
@@ -1431,10 +1897,17 @@ function QuestionBank({
                           <p className="mt-0.5 text-xs text-cyan-200/80">{formatDate(question.nextReviewDate)}</p>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 rounded-xl border border-violet-400/10 bg-violet-400/[0.025] px-3 py-2.5">
+                        <RotateCcw className="size-4 text-violet-400/60" />
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-slate-700">Attempts</p>
+                          <p className="mt-0.5 text-xs text-violet-200/80">{question.reviewCount} total</p>
+                        </div>
+                      </div>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs text-slate-600">
-                        {question.reviewCount} review{question.reviewCount === 1 ? "" : "s"} completed
+                        {question.reviewHistory.length} review timestamp{question.reviewHistory.length === 1 ? "" : "s"} available for the curve
                       </p>
                       <div className="flex items-center gap-1">
                         <button
@@ -1486,6 +1959,28 @@ function AnalyticsDashboard({
   courses: CourseCode[];
 }) {
   const today = getLocalDateKey();
+  const [curveQuestionId, setCurveQuestionId] = useState(
+    () => questions[0]?.id ?? "",
+  );
+  const curveQuestions = useMemo(
+    () =>
+      [...questions].sort((left, right) =>
+        `${left.course}${left.chapter}${left.subchapter}${left.question}`.localeCompare(
+          `${right.course}${right.chapter}${right.subchapter}${right.question}`,
+        ),
+      ),
+    [questions],
+  );
+  const curveQuestion =
+    questions.find((question) => question.id === curveQuestionId) ??
+    curveQuestions[0];
+
+  useEffect(() => {
+    if (curveQuestion && curveQuestion.id !== curveQuestionId) {
+      setCurveQuestionId(curveQuestion.id);
+    }
+  }, [curveQuestion, curveQuestionId]);
+
   const atRiskQuestions = questions.filter(
     (question) => question.level <= 2 || question.nextReviewDate < today,
   );
@@ -1601,6 +2096,52 @@ function AnalyticsDashboard({
         {!courses.length && (
           <div className="xl:col-span-3 rounded-2xl border border-dashed border-slate-800 bg-slate-950/35 px-5 py-10 text-center text-sm text-slate-600">
             Course mastery will appear after you create a course.
+          </div>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-[#0f172a] p-5 sm:p-6" aria-label="Question forgetting curve">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <BarChart3 className="size-4 text-cyan-300" />
+              Question forgetting curve
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Select one question to inspect its attempts, review resets, and estimated retention over time.
+            </p>
+          </div>
+          <label className="min-w-72 flex-1 sm:max-w-xl">
+            <span className="sr-only">Select question for forgetting curve</span>
+            <select
+              aria-label="Select question for forgetting curve"
+              value={curveQuestion?.id ?? ""}
+              onChange={(event) => setCurveQuestionId(event.target.value)}
+              disabled={!curveQuestions.length}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {!curveQuestions.length && <option value="">No questions available</option>}
+              {curveQuestions.map((question) => (
+                <option key={question.id} value={question.id}>
+                  {question.course} · {question.chapter} · {question.subchapter} — {question.question}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {curveQuestion ? (
+          <div className="mt-5">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full border border-cyan-400/20 bg-cyan-400/[0.08] px-2.5 py-1 font-semibold text-cyan-200">{curveQuestion.course}</span>
+              <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-400">{curveQuestion.chapter}</span>
+              <span className="text-slate-600">{curveQuestion.subchapter}</span>
+            </div>
+            <p className="mb-4 text-sm font-medium leading-6 text-slate-300">{curveQuestion.question}</p>
+            <QuestionForgettingCurve question={curveQuestion} />
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-800 px-5 py-12 text-center text-sm text-slate-600">
+            Add a question to begin tracking its forgetting curve.
           </div>
         )}
       </section>
@@ -1745,7 +2286,7 @@ function SettingsPage({
 
   function exportData() {
     const backup = {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       courses,
       questions,
