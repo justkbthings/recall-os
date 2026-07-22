@@ -90,6 +90,106 @@ async function main() {
       };
     })()`)
 
+    const practiceTargetResult = await evaluate(`(() => {
+      const questions = JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]');
+      const now = new Date();
+      const today = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+      ].join('-');
+      const dueQuestions = questions
+        .filter((question) => question.nextReviewDate <= today)
+        .sort((left, right) =>
+          left.nextReviewDate.localeCompare(right.nextReviewDate) ||
+          left.addedAt.localeCompare(right.addedAt) ||
+          left.id.localeCompare(right.id));
+      const target = dueQuestions[0] || questions[0];
+      if (!target) return { available: false };
+      const courseButton = [...document.querySelectorAll('button')]
+        .find((button) => button.textContent.trim() === target.course);
+      courseButton?.click();
+      return {
+        available: true,
+        hasDueQuestion: dueQuestions.length > 0,
+        course: target.course,
+        chapter: target.chapter,
+        subchapter: target.subchapter,
+      };
+    })()`)
+    await delay(300)
+
+    const practiceTarget = practiceTargetResult.result.value
+    let practiceResult = { available: false }
+    if (practiceTarget.available) {
+      await evaluate(`(() => {
+        const chapterSelect = document.querySelector('[aria-label="Choose practice chapter"]');
+        const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        setValue.call(chapterSelect, ${JSON.stringify(practiceTarget.chapter)});
+        chapterSelect.dispatchEvent(new Event('input', { bubbles: true }));
+        chapterSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`)
+      await delay(250)
+      await evaluate(`(() => {
+        const subchapterSelect = document.querySelector('[aria-label="Choose practice subchapter"]');
+        const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        setValue.call(subchapterSelect, ${JSON.stringify(practiceTarget.subchapter)});
+        subchapterSelect.dispatchEvent(new Event('input', { bubbles: true }));
+        subchapterSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`)
+      await delay(300)
+      const scopeResult = await evaluate(`(() => {
+        const questions = JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]');
+        const now = new Date();
+        const today = [
+          now.getFullYear(),
+          String(now.getMonth() + 1).padStart(2, '0'),
+          String(now.getDate()).padStart(2, '0'),
+        ].join('-');
+        const scopedDue = questions
+          .filter((question) =>
+            question.course === ${JSON.stringify(practiceTarget.course)} &&
+            question.chapter === ${JSON.stringify(practiceTarget.chapter)} &&
+            question.subchapter === ${JSON.stringify(practiceTarget.subchapter)} &&
+            question.nextReviewDate <= today)
+          .sort((left, right) =>
+            left.nextReviewDate.localeCompare(right.nextReviewDate) ||
+            left.addedAt.localeCompare(right.addedAt) ||
+            left.id.localeCompare(right.id));
+        const startButton = document.querySelector('[data-testid="start-practice-session"]');
+        const result = {
+          available: true,
+          chapterSelectorVisible: Boolean(document.querySelector('[aria-label="Choose practice chapter"]')),
+          subchapterSelectorVisible: Boolean(document.querySelector('[aria-label="Choose practice subchapter"]')),
+          chapterProgressVisible: Boolean(document.querySelector('[data-scope-progress="chapter"]')),
+          subchapterProgressVisible: Boolean(document.querySelector('[data-scope-progress="subchapter"]')),
+          startEnabled: Boolean(startButton && !startButton.disabled),
+          expectedFirstQuestion: scopedDue[0]?.question || null,
+        };
+        if (scopedDue.length) startButton?.click();
+        return result;
+      })()`)
+      await delay(350)
+      const cardResult = await evaluate(`(() => ({
+        displayedFirstQuestion: document.querySelector('[data-testid="practice-question"]')?.textContent || null,
+      }))()`)
+      practiceResult = {
+        ...scopeResult.result.value,
+        ...cardResult.result.value,
+      }
+
+      if (
+        !practiceResult.chapterSelectorVisible ||
+        !practiceResult.subchapterSelectorVisible ||
+        !practiceResult.chapterProgressVisible ||
+        !practiceResult.subchapterProgressVisible ||
+        (practiceTarget.hasDueQuestion &&
+          practiceResult.displayedFirstQuestion !== practiceResult.expectedFirstQuestion)
+      ) {
+        throw new Error(`Daily Practice hierarchy verification failed: ${JSON.stringify(practiceResult)}`)
+      }
+    }
+
     await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('Question Bank'));
       button?.click();
@@ -110,6 +210,39 @@ async function main() {
     }))()`)
     await evaluate(`document.querySelector('[aria-label="Close question editor"]')?.click()`)
     await delay(200)
+    const attemptResult = await evaluate(`(() => {
+      const questions = JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]');
+      return {
+        attemptCountVisible: [...document.querySelectorAll('article')]
+          .some((article) => /\\d+ attempts?/.test(article.innerText)),
+        reviewHistoryMigrated: questions.every((question) => Array.isArray(question.reviewHistory)),
+      };
+    })()`)
+    await evaluate(`(() => {
+      const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('Analytics'));
+      button?.click();
+    })()`)
+    await delay(350)
+    const curveResult = await evaluate(`(() => ({
+      selectorVisible: Boolean(document.querySelector('[aria-label="Select question for forgetting curve"]')),
+      graphVisible: Boolean(document.querySelector('[data-testid="question-forgetting-curve"]')),
+      attemptSummaryVisible: /\\d+ attempts?/.test(document.querySelector('[data-testid="question-forgetting-curve"]')?.innerText || ''),
+    }))()`)
+    if (
+      storageResult.result.value.questionCount > 0 &&
+      (!attemptResult.result.value.attemptCountVisible ||
+        !attemptResult.result.value.reviewHistoryMigrated ||
+        !curveResult.result.value.selectorVisible ||
+        !curveResult.result.value.graphVisible ||
+        !curveResult.result.value.attemptSummaryVisible)
+    ) {
+      throw new Error(
+        `Attempt or forgetting-curve verification failed: ${JSON.stringify({
+          attempts: attemptResult.result.value,
+          curve: curveResult.result.value,
+        })}`,
+      )
+    }
     await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('Settings'));
       button?.click();
@@ -128,8 +261,11 @@ async function main() {
         {
           page: { title: page.title, url: page.url },
           storage: storageResult.result.value,
+          dailyPractice: practiceResult,
           editAvailable: editorResult.result.value,
           editor: modalResult.result.value,
+          attempts: attemptResult.result.value,
+          questionCurve: curveResult.result.value,
           courseManager: courseManagerResult.result.value,
         },
         null,

@@ -86,16 +86,34 @@ async function main() {
     throw new Error('No non-empty Recall OS question snapshot could be recovered.')
   }
 
+  const questionsWithReviewHistory = recoveredQuestions.map((question) => {
+    if (Array.isArray(question.reviewHistory)) return question
+    const reviewCount = Number.isFinite(question.reviewCount) ? question.reviewCount : 0
+    return {
+      ...question,
+      reviewHistory:
+        reviewCount > 0 && question.lastReviewed && question.nextReviewDate
+          ? [
+              {
+                reviewedAt: question.lastReviewed,
+                level: question.level,
+                nextReviewDate: question.nextReviewDate,
+              },
+            ]
+          : [],
+    }
+  })
+
   const recoveredCourses = courseCandidates.at(-1) || [
     ...new Set(recoveredQuestions.map((question) => question.course).filter(Boolean)),
   ]
   const recoveredActivityDates = activityCandidates.at(-1) || []
   const recovery = {
-    version: 2,
+    version: 3,
     recoveredAt: new Date().toISOString(),
     source: levelDbDirectory,
     courses: recoveredCourses,
-    questions: recoveredQuestions,
+    questions: questionsWithReviewHistory,
     activityDates: recoveredActivityDates,
   }
 
@@ -104,6 +122,9 @@ async function main() {
       {
         questionSnapshotsFound: questionCandidates.map((value) => value.length),
         recoveredQuestionCount: recoveredQuestions.length,
+        questionsWithReviewHistory: questionsWithReviewHistory.filter(
+          (question) => Array.isArray(question.reviewHistory),
+        ).length,
         recoveredCourses,
         courseDistribution: Object.fromEntries(
           recoveredCourses.map((course) => [
