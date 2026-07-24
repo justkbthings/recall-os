@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 — 2026-07-24
+
+- Added fixed-style rich document editors for questions and answers.
+- Added bold, italic, underline, lists, and indentation controls.
+- Added locally rendered LaTeX equations.
+- Added compressed pasted/uploaded pictures that travel with JSON backups.
+- Applied Nirmala UI to question editing and question display.
+- Added intentional subchapter retake sessions that reschedule reviewed cards.
+- Added an optional all-courses challenge containing every question.
+- Kept scheduled due-question practice as the default workflow.
+- Added a live installed-profile backup utility and rich-content migration tests.
+
 ## 1.3.0 — 2026-07-22
 
 - Added required Chapter → Subchapter selection before Daily Practice starts.

@@ -10,14 +10,28 @@ study history, and JSON backup/import.
 - Select an active course, chapter, and subchapter before beginning a session.
 - Review the oldest due memory first within the selected subchapter.
 - See live chapter and subchapter mastery progress throughout the session.
+- Intentionally retake every question in a selected subchapter; new ratings
+  reschedule those questions without disabling future scheduled prompts.
+- Optionally run an all-courses challenge across the complete question library.
 - Track the total number of attempts on every question.
 - Inspect an estimated per-question retention line graph in Analytics. Each
   timestamped review resets the curve and the selected rating controls the next
   decay interval.
 
-Review-history timestamps were introduced in version 1.3.0. Existing attempt
-counts are preserved during migration, while precise curve events accumulate
-for all new reviews.
+## Rich question and answer documents
+
+- Questions use a fixed Nirmala UI typeface.
+- Answers retain their fixed document style; there is no font selector.
+- Both editors support bold, italic, underline, bullets, numbered lists, and
+  indentation.
+- LaTeX equations are rendered locally with KaTeX.
+- Uploaded or pasted pictures are compressed, embedded with the question, and
+  included in JSON backups.
+- Stored rich text is sanitised before display.
+
+Review-history timestamps were introduced in version 1.3.0. Rich documents were
+introduced in version 1.4.0. Existing questions and attempt counts are preserved
+during migration.
 
 ## Ownership
 
@@ -32,6 +46,7 @@ code rights are not transferred.
 - React and TypeScript
 - Tailwind CSS
 - Lucide icons
+- KaTeX equation rendering
 - Electron desktop shell
 - Browser localStorage persisted under `%APPDATA%\Recall OS`
 - Electron Squirrel Windows installer
@@ -48,6 +63,12 @@ Production checks:
 ```powershell
 npm.cmd run lint
 npm.cmd run build
+```
+
+Create a private live-profile backup from the latest installed version:
+
+```powershell
+npm.cmd run profile:backup
 ```
 
 ## Building the signed Windows release
