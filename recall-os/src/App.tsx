@@ -12,6 +12,7 @@ import {
 import {
   ArrowRight,
   BarChart3,
+  Bold,
   BookOpen,
   Brain,
   CalendarCheck2,
@@ -25,7 +26,13 @@ import {
   Download,
   Eye,
   Flame,
+  ImagePlus,
+  IndentDecrease,
+  IndentIncrease,
+  Italic,
   Layers3,
+  List,
+  ListOrdered,
   Pencil,
   Plus,
   RotateCcw,
@@ -33,12 +40,16 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Sigma,
   Trash2,
   Trophy,
+  Underline,
   Upload,
   X,
   Zap,
 } from "lucide-react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 type CourseCode = string;
 type NavigationId = "practice" | "questions" | "analytics" | "settings";
@@ -63,12 +74,13 @@ export interface Question {
   nextReviewDate: string;
   reviewCount: number;
   reviewHistory: ReviewAttempt[];
+  contentVersion: 1;
 }
 
 const STORAGE_KEY = "active-recall.questions.v1";
 const ACTIVITY_STORAGE_KEY = "active-recall.activity-dates.v1";
 const COURSES_STORAGE_KEY = "active-recall.courses.v1";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const COPYRIGHT_OWNER = "Karabo Goodwill Nkambule";
 const LEGACY_DEFAULT_COURSES: CourseCode[] = ["CSC3003S", "INF3012S", "AST1000S"];
 const REVIEW_LEVELS = [
@@ -151,14 +163,19 @@ function normalizeQuestion(value: unknown): Question | null {
             nextReviewDate: question.nextReviewDate!,
           },
         ];
+  const richContent = question.contentVersion === 1;
 
   return {
     id: question.id!,
     course: question.course!.trim(),
     chapter: question.chapter!,
     subchapter: question.subchapter!,
-    question: question.question!,
-    answer: question.answer!,
+    question: richContent
+      ? sanitizeRichHtml(question.question!)
+      : plainTextToRichHtml(question.question!),
+    answer: richContent
+      ? sanitizeRichHtml(question.answer!)
+      : plainTextToRichHtml(question.answer!),
     level: question.level as Question["level"],
     addedAt:
       typeof question.addedAt === "string"
@@ -170,6 +187,7 @@ function normalizeQuestion(value: unknown): Question | null {
     nextReviewDate: question.nextReviewDate!,
     reviewCount,
     reviewHistory,
+    contentVersion: 1,
   };
 }
 
@@ -343,6 +361,405 @@ function formatReviewTimestamp(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(parsedDate);
+}
+
+const RICH_TEXT_ALLOWED_TAGS = new Set([
+  "B",
+  "BLOCKQUOTE",
+  "BR",
+  "CODE",
+  "DIV",
+  "EM",
+  "I",
+  "IMG",
+  "LI",
+  "OL",
+  "P",
+  "PRE",
+  "SPAN",
+  "STRONG",
+  "SUB",
+  "SUP",
+  "U",
+  "UL",
+]);
+const SAFE_IMAGE_SOURCE = /^data:image\/(?:png|jpe?g|webp|gif);base64,/i;
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function plainTextToRichHtml(value: string): string {
+  const normalized = value.replace(/\r\n?/g, "\n");
+  return `<p>${escapeHtml(normalized).replaceAll("\n", "<br>")}</p>`;
+}
+
+function sanitizeRichHtml(value: string): string {
+  if (typeof document === "undefined") return value;
+  const template = document.createElement("template");
+  template.innerHTML = value;
+
+  Array.from(template.content.querySelectorAll("script,style,iframe,object,embed,link,meta"))
+    .forEach((element) => element.remove());
+
+  Array.from(template.content.querySelectorAll("*"))
+    .forEach((element) => {
+      if (!RICH_TEXT_ALLOWED_TAGS.has(element.tagName)) {
+        element.replaceWith(...Array.from(element.childNodes));
+        return;
+      }
+
+      const equation = element.tagName === "SPAN"
+        ? element.getAttribute("data-equation")
+        : null;
+      const equationDisplay = element.getAttribute("data-display") === "block"
+        ? "block"
+        : "inline";
+      const imageSource = element.tagName === "IMG" ? element.getAttribute("src") : null;
+      const imageAlt = element.tagName === "IMG" ? element.getAttribute("alt") ?? "Study image" : null;
+
+      Array.from(element.attributes).forEach((attribute) => {
+        element.removeAttribute(attribute.name);
+      });
+
+      if (equation) {
+        element.setAttribute("data-equation", equation.slice(0, 2_000));
+        element.setAttribute("data-display", equationDisplay);
+        element.textContent = equation;
+      }
+      if (element.tagName === "IMG") {
+        if (!imageSource || !SAFE_IMAGE_SOURCE.test(imageSource)) {
+          element.remove();
+          return;
+        }
+        element.setAttribute("src", imageSource);
+        element.setAttribute("alt", imageAlt?.slice(0, 240) || "Study image");
+      }
+    });
+
+  return template.innerHTML;
+}
+
+function richTextToPlainText(value: string): string {
+  if (typeof document === "undefined") return value.replace(/<[^>]*>/g, " ");
+  const template = document.createElement("template");
+  template.innerHTML = sanitizeRichHtml(value);
+  template.content.querySelectorAll("[data-equation]").forEach((element) => {
+    element.replaceWith(` ${element.getAttribute("data-equation") ?? "equation"} `);
+  });
+  template.content.querySelectorAll("img").forEach((element) => {
+    element.replaceWith(` ${element.getAttribute("alt") ?? "Study image"} `);
+  });
+  template.content.querySelectorAll("br").forEach((element) => element.replaceWith("\n"));
+  template.content.querySelectorAll("p,div,li,blockquote,pre").forEach((element) => {
+    element.append("\n");
+  });
+  return (template.content.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function hasMeaningfulRichContent(value: string): boolean {
+  if (richTextToPlainText(value).length > 0) return true;
+  if (typeof document === "undefined") return false;
+  const template = document.createElement("template");
+  template.innerHTML = sanitizeRichHtml(value);
+  return Boolean(template.content.querySelector("img,[data-equation]"));
+}
+
+function renderRichHtml(value: string): string {
+  if (typeof document === "undefined") return value;
+  const template = document.createElement("template");
+  template.innerHTML = sanitizeRichHtml(value);
+  template.content.querySelectorAll<HTMLElement>("[data-equation]").forEach((element) => {
+    const equation = element.getAttribute("data-equation") ?? "";
+    const displayMode = element.getAttribute("data-display") === "block";
+    element.className = displayMode ? "rich-equation rich-equation-block" : "rich-equation";
+    element.innerHTML = katex.renderToString(equation, {
+      displayMode,
+      throwOnError: false,
+      strict: "ignore",
+      trust: false,
+    });
+  });
+  return template.innerHTML;
+}
+
+async function compressStudyImage(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("This image could not be opened."));
+      image.src = objectUrl;
+    });
+
+    const maximumDimension = 1_400;
+    const initialScale = Math.min(
+      1,
+      maximumDimension / Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    const canvas = document.createElement("canvas");
+    let dataUrl = "";
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const scale = initialScale * 0.82 ** attempt;
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Image processing is unavailable.");
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      dataUrl = canvas.toDataURL("image/webp", Math.max(0.55, 0.8 - attempt * 0.08));
+      if (dataUrl.length <= 900_000) return dataUrl;
+    }
+    throw new Error("The image is still too large after compression. Crop it and try again.");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function RichTextView({
+  value,
+  variant,
+  className = "",
+}: {
+  value: string;
+  variant: "question" | "answer";
+  className?: string;
+}) {
+  const renderedHtml = useMemo(() => renderRichHtml(value), [value]);
+  return (
+    <div
+      className={`rich-content ${variant === "question" ? "rich-question" : "rich-answer"} ${className}`}
+      dangerouslySetInnerHTML={{ __html: renderedHtml }}
+    />
+  );
+}
+
+function RichTextEditor({
+  value,
+  onChange,
+  variant,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  variant: "question" | "answer";
+  placeholder: string;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+  const [showEquation, setShowEquation] = useState(false);
+  const [equation, setEquation] = useState("");
+  const [equationDisplay, setEquationDisplay] = useState<"inline" | "block">("block");
+  const [editorError, setEditorError] = useState("");
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    const cleanValue = sanitizeRichHtml(value);
+    if (editor.innerHTML !== cleanValue) editor.innerHTML = cleanValue;
+  }, [value]);
+
+  function rememberSelection() {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range.cloneRange();
+    }
+  }
+
+  function restoreSelection() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    if (savedRangeRef.current) {
+      selection?.addRange(savedRangeRef.current);
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection?.addRange(range);
+  }
+
+  function syncEditorValue(sanitize = false) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const nextValue = sanitize ? sanitizeRichHtml(editor.innerHTML) : editor.innerHTML;
+    if (sanitize && editor.innerHTML !== nextValue) editor.innerHTML = nextValue;
+    onChange(nextValue);
+  }
+
+  function runCommand(command: string) {
+    restoreSelection();
+    document.execCommand(command, false);
+    rememberSelection();
+    syncEditorValue();
+  }
+
+  function insertHtmlAtSelection(html: string) {
+    restoreSelection();
+    document.execCommand("insertHTML", false, html);
+    rememberSelection();
+    syncEditorValue();
+  }
+
+  async function insertImages(files: File[]) {
+    setEditorError("");
+    for (const file of files) {
+      try {
+        const dataUrl = await compressStudyImage(file);
+        const image = document.createElement("img");
+        image.src = dataUrl;
+        image.alt = file.name || "Study image";
+        insertHtmlAtSelection(`<p>${image.outerHTML}</p>`);
+      } catch (error) {
+        setEditorError(error instanceof Error ? error.message : "The image could not be inserted.");
+        break;
+      }
+    }
+  }
+
+  function insertEquation() {
+    const cleanEquation = equation.trim();
+    if (!cleanEquation) return;
+    const holder = document.createElement("span");
+    holder.setAttribute("data-equation", cleanEquation);
+    holder.setAttribute("data-display", equationDisplay);
+    holder.textContent = cleanEquation;
+    insertHtmlAtSelection(equationDisplay === "block" ? `<p>${holder.outerHTML}</p>` : holder.outerHTML);
+    setEquation("");
+    setShowEquation(false);
+  }
+
+  const toolbarButton =
+    "grid size-8 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-800 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50";
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-2xl border border-slate-800 bg-[#0b101a] transition focus-within:border-cyan-400/40 focus-within:ring-2 focus-within:ring-cyan-400/10">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-800 bg-slate-950/55 px-2 py-1.5" aria-label="Document formatting toolbar">
+        <button type="button" title="Bold" aria-label="Bold" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("bold"); }}><Bold className="size-4" /></button>
+        <button type="button" title="Italic" aria-label="Italic" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("italic"); }}><Italic className="size-4" /></button>
+        <button type="button" title="Underline" aria-label="Underline" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("underline"); }}><Underline className="size-4" /></button>
+        <span className="mx-1 h-5 w-px bg-slate-800" />
+        <button type="button" title="Bulleted list" aria-label="Bulleted list" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("insertUnorderedList"); }}><List className="size-4" /></button>
+        <button type="button" title="Numbered list" aria-label="Numbered list" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("insertOrderedList"); }}><ListOrdered className="size-4" /></button>
+        <button type="button" title="Decrease indent" aria-label="Decrease indent" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("outdent"); }}><IndentDecrease className="size-4" /></button>
+        <button type="button" title="Increase indent" aria-label="Increase indent" className={toolbarButton} onMouseDown={(event) => { event.preventDefault(); runCommand("indent"); }}><IndentIncrease className="size-4" /></button>
+        <span className="mx-1 h-5 w-px bg-slate-800" />
+        <button
+          type="button"
+          title="Insert equation"
+          aria-label="Insert equation"
+          className={toolbarButton}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            rememberSelection();
+            setShowEquation((current) => !current);
+          }}
+        >
+          <Sigma className="size-4" />
+        </button>
+        <button
+          type="button"
+          title="Insert picture"
+          aria-label="Insert picture"
+          className={toolbarButton}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            rememberSelection();
+            imageInputRef.current?.click();
+          }}
+        >
+          <ImagePlus className="size-4" />
+        </button>
+        <span className="ml-auto px-2 text-[10px] text-slate-700">
+          {variant === "question" ? "Nirmala UI · fixed" : "Answer style · fixed"}
+        </span>
+      </div>
+
+      {showEquation && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/35 px-3 py-2.5">
+          <span className="text-xs font-medium text-slate-500">LaTeX</span>
+          <input
+            autoFocus
+            value={equation}
+            onChange={(event) => setEquation(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                insertEquation();
+              }
+            }}
+            placeholder="e.g. E = mc^2 or \\frac{a}{b}"
+            className="min-w-56 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-200 outline-none focus:border-cyan-400/50"
+          />
+          <select
+            aria-label="Equation layout"
+            value={equationDisplay}
+            onChange={(event) => setEquationDisplay(event.target.value as "inline" | "block")}
+            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-300 outline-none"
+          >
+            <option value="block">Display</option>
+            <option value="inline">Inline</option>
+          </select>
+          <button type="button" onClick={insertEquation} className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-200">Insert</button>
+        </div>
+      )}
+
+      <div
+        ref={editorRef}
+        contentEditable
+        role="textbox"
+        aria-multiline="true"
+        data-placeholder={placeholder}
+        suppressContentEditableWarning
+        onInput={() => syncEditorValue()}
+        onBlur={() => syncEditorValue(true)}
+        onMouseUp={rememberSelection}
+        onKeyUp={rememberSelection}
+        onFocus={rememberSelection}
+        onPaste={(event) => {
+          rememberSelection();
+          const imageFiles = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+          if (imageFiles.length) {
+            event.preventDefault();
+            void insertImages(imageFiles);
+            return;
+          }
+          event.preventDefault();
+          const pastedHtml = event.clipboardData.getData("text/html");
+          const pastedText = event.clipboardData.getData("text/plain");
+          insertHtmlAtSelection(pastedHtml ? sanitizeRichHtml(pastedHtml) : plainTextToRichHtml(pastedText));
+        }}
+        className={`rich-editor rich-content min-h-44 max-h-[420px] overflow-y-auto px-4 py-3 text-sm leading-6 text-slate-200 outline-none ${variant === "question" ? "rich-question" : "rich-answer"}`}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          if (files.length) void insertImages(files);
+        }}
+      />
+      {editorError && <p className="border-t border-rose-400/10 bg-rose-400/[0.04] px-3 py-2 text-xs text-rose-300/80">{editorError}</p>}
+    </div>
+  );
 }
 
 function calculateReviewStreak(activityDates: string[]): number {
@@ -542,6 +959,8 @@ interface DailyPracticeProps {
   setActivityDates: Dispatch<SetStateAction<string[]>>;
   activeCourse: CourseCode;
 }
+
+type PracticeMode = "scheduled" | "retake" | "challenge";
 
 function CourseForgettingCurves({
   questions,
@@ -804,7 +1223,7 @@ function QuestionForgettingCurve({ question }: { question: Question }) {
         <svg
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
           role="img"
-          aria-label={`Estimated forgetting curve for ${question.question}`}
+          aria-label={`Estimated forgetting curve for ${richTextToPlainText(question.question)}`}
           className="min-w-[620px] w-full"
         >
           <defs>
@@ -897,6 +1316,7 @@ function DailyPractice({
   setActivityDates,
   activeCourse,
 }: DailyPracticeProps) {
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>("scheduled");
   const [selectedChapter, setSelectedChapter] = useState("");
   const [selectedSubchapter, setSelectedSubchapter] = useState("");
   const [queueIds, setQueueIds] = useState<string[]>([]);
@@ -959,21 +1379,34 @@ function DailyPractice({
     ? Math.round((masteredCount / courseQuestions.length) * 100)
     : 0;
   const reviewStreak = calculateReviewStreak(activityDates);
-  const dueQuestions = useMemo(
-    () =>
-      selectedSubchapterQuestions
-        .filter((question) => question.nextReviewDate <= today)
-        .sort(
-          (left, right) =>
-            left.nextReviewDate.localeCompare(right.nextReviewDate) ||
-            left.addedAt.localeCompare(right.addedAt) ||
-            left.id.localeCompare(right.id),
-        ),
-    [selectedSubchapterQuestions, today],
-  );
+  const sessionQuestions = useMemo(() => {
+    const candidates =
+      practiceMode === "challenge"
+        ? [...questions]
+        : [...selectedSubchapterQuestions];
+    return candidates
+      .filter(
+        (question) =>
+          practiceMode !== "scheduled" || question.nextReviewDate <= today,
+      )
+      .sort(
+        (left, right) =>
+          left.nextReviewDate.localeCompare(right.nextReviewDate) ||
+          left.addedAt.localeCompare(right.addedAt) ||
+          left.course.localeCompare(right.course) ||
+          left.chapter.localeCompare(right.chapter) ||
+          left.subchapter.localeCompare(right.subchapter) ||
+          left.id.localeCompare(right.id),
+      );
+  }, [practiceMode, questions, selectedSubchapterQuestions, today]);
   const currentQuestion = questions.find((question) => question.id === queueIds[0]);
-  const scopeSelected = Boolean(selectedChapter && selectedSubchapter);
+  const scopeSelected =
+    practiceMode === "challenge" || Boolean(selectedChapter && selectedSubchapter);
   const sessionCompletedCount = Math.max(0, sessionTotal - queueIds.length);
+  const sessionScopeLabel =
+    practiceMode === "challenge"
+      ? "All courses challenge"
+      : `${selectedChapter} · ${selectedSubchapter}`;
 
   useEffect(() => {
     setSelectedChapter("");
@@ -1003,11 +1436,11 @@ function DailyPractice({
     setSessionTotal(0);
     setQueueIds([]);
     setAnswerVisible(false);
-  }, [selectedChapter, selectedSubchapter]);
+  }, [practiceMode, selectedChapter, selectedSubchapter]);
 
   function startSession() {
-    if (!scopeSelected || dueQuestions.length === 0) return;
-    const nextQueue = dueQuestions.map((question) => question.id);
+    if (!scopeSelected || sessionQuestions.length === 0) return;
+    const nextQueue = sessionQuestions.map((question) => question.id);
     setQueueIds(nextQueue);
     setSessionTotal(nextQueue.length);
     setAnswerVisible(false);
@@ -1119,55 +1552,112 @@ function DailyPractice({
               Turn what you studied into knowledge you can retrieve.
             </h3>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500">
-              Choose a chapter, then a subchapter. Recall OS reviews the oldest due
-              memories first, never simply the most recently added question.
+              Scheduled practice remains the default. You can also deliberately retake a
+              subchapter or start an optional challenge across your full question library.
+            </p>
+            <div className="mt-6 grid w-full gap-2 text-left sm:grid-cols-3" aria-label="Choose practice mode">
+              {[
+                {
+                  id: "scheduled" as PracticeMode,
+                  label: "Scheduled",
+                  detail: "Only questions due now",
+                  icon: CalendarDays,
+                },
+                {
+                  id: "retake" as PracticeMode,
+                  label: "Intentional retake",
+                  detail: "Repeat one subchapter",
+                  icon: RotateCcw,
+                },
+                {
+                  id: "challenge" as PracticeMode,
+                  label: "All-courses challenge",
+                  detail: "Every question, optional",
+                  icon: Trophy,
+                },
+              ].map(({ id, label, detail, icon: Icon }) => {
+                const active = practiceMode === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    data-practice-mode={id}
+                    onClick={() => setPracticeMode(id)}
+                    className={`rounded-2xl border p-3.5 transition ${
+                      active
+                        ? "border-cyan-400/30 bg-cyan-400/[0.08] text-cyan-100"
+                        : "border-slate-800 bg-slate-950/45 text-slate-500 hover:border-slate-700 hover:text-slate-300"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-xs font-semibold">
+                      <Icon className={`size-4 ${active ? "text-cyan-300" : "text-slate-600"}`} />
+                      {label}
+                    </span>
+                    <span className="mt-1.5 block text-[10px] leading-4 opacity-65">{detail}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-3 max-w-xl text-xs leading-5 text-slate-600">
+              {practiceMode === "scheduled" &&
+                "Choose a chapter and subchapter. The oldest due memory is always shown first."}
+              {practiceMode === "retake" &&
+                "Choose a chapter and subchapter to repeat every question now. Your ratings will update their next review dates."}
+              {practiceMode === "challenge" &&
+                "All questions from all courses will be included. Ratings still update each question’s normal review schedule."}
             </p>
             <div className="mt-6 flex items-center gap-2 rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1.5 text-xs text-slate-500">
               <BookOpen className="size-3.5 text-cyan-300/70" />
-              Course: <span className="font-semibold text-slate-300">{activeCourse || "Choose a course above"}</span>
+              {practiceMode === "challenge" ? (
+                <>Scope: <span className="font-semibold text-slate-300">All courses · {questions.length} questions</span></>
+              ) : (
+                <>Course: <span className="font-semibold text-slate-300">{activeCourse || "Choose a course above"}</span></>
+              )}
             </div>
-            <div className="mt-5 grid w-full gap-3 text-left sm:grid-cols-2" aria-label="Practice scope selector">
-              <label className="block">
-                <span className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  <span className="grid size-5 place-items-center rounded-full bg-cyan-400/10 text-[10px] text-cyan-300">1</span>
-                  Chapter
-                </span>
-                <select
-                  aria-label="Choose practice chapter"
-                  value={selectedChapter}
-                  onChange={(event) => {
-                    setSelectedChapter(event.target.value);
-                    setSelectedSubchapter("");
-                  }}
-                  disabled={!activeCourse || chapterOptions.length === 0}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Choose a chapter</option>
-                  {chapterOptions.map((chapter) => (
-                    <option key={chapter} value={chapter}>{chapter}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  <span className="grid size-5 place-items-center rounded-full bg-violet-400/10 text-[10px] text-violet-300">2</span>
-                  Subchapter
-                </span>
-                <select
-                  aria-label="Choose practice subchapter"
-                  value={selectedSubchapter}
-                  onChange={(event) => setSelectedSubchapter(event.target.value)}
-                  disabled={!selectedChapter || subchapterOptions.length === 0}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-violet-400/50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Choose a subchapter</option>
-                  {subchapterOptions.map((subchapter) => (
-                    <option key={subchapter} value={subchapter}>{subchapter}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {selectedChapter && (
+            {practiceMode !== "challenge" && (
+              <div className="mt-5 grid w-full gap-3 text-left sm:grid-cols-2" aria-label="Practice scope selector">
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <span className="grid size-5 place-items-center rounded-full bg-cyan-400/10 text-[10px] text-cyan-300">1</span>
+                    Chapter
+                  </span>
+                  <select
+                    aria-label="Choose practice chapter"
+                    value={selectedChapter}
+                    onChange={(event) => {
+                      setSelectedChapter(event.target.value);
+                      setSelectedSubchapter("");
+                    }}
+                    disabled={!activeCourse || chapterOptions.length === 0}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">Choose a chapter</option>
+                    {chapterOptions.map((chapter) => (
+                      <option key={chapter} value={chapter}>{chapter}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <span className="grid size-5 place-items-center rounded-full bg-violet-400/10 text-[10px] text-violet-300">2</span>
+                    Subchapter
+                  </span>
+                  <select
+                    aria-label="Choose practice subchapter"
+                    value={selectedSubchapter}
+                    onChange={(event) => setSelectedSubchapter(event.target.value)}
+                    disabled={!selectedChapter || subchapterOptions.length === 0}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-3 text-sm text-slate-200 outline-none transition focus:border-violet-400/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">Choose a subchapter</option>
+                    {subchapterOptions.map((subchapter) => (
+                      <option key={subchapter} value={subchapter}>{subchapter}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {practiceMode !== "challenge" && selectedChapter && (
               <div className={`mt-4 grid w-full gap-3 ${selectedSubchapter ? "sm:grid-cols-2" : ""}`}>
                 <ScopeProgressCard
                   label="Chapter"
@@ -1187,12 +1677,23 @@ function DailyPractice({
                 )}
               </div>
             )}
-            {!chapterOptions.length && activeCourse && (
+            {practiceMode === "challenge" && (
+              <div className="mt-4 w-full">
+                <ScopeProgressCard
+                  label="All courses"
+                  name="Full question library"
+                  questions={questions}
+                  today={today}
+                  accent="violet"
+                />
+              </div>
+            )}
+            {practiceMode !== "challenge" && !chapterOptions.length && activeCourse && (
               <p className="mt-4 text-xs text-amber-300/80">
                 This course has no questions yet. Add one in Question Bank to begin.
               </p>
             )}
-            {scopeSelected && dueQuestions.length === 0 && (
+            {practiceMode === "scheduled" && scopeSelected && sessionQuestions.length === 0 && (
               <p className="mt-4 flex items-center gap-2 text-xs text-emerald-300/80">
                 <CheckCircle2 className="size-4" /> This subchapter is all caught up for {formatDate(today)}.
               </p>
@@ -1201,11 +1702,13 @@ function DailyPractice({
               type="button"
               data-testid="start-practice-session"
               onClick={startSession}
-              disabled={!scopeSelected || dueQuestions.length === 0}
+              disabled={!scopeSelected || sessionQuestions.length === 0}
               className="group mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_35px_rgba(248,250,252,0.12)] transition hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600 disabled:shadow-none"
             >
-              Start Selected Recall Session
-              <span className="rounded-md bg-slate-950/10 px-1.5 py-0.5 text-xs">{dueQuestions.length}</span>
+              {practiceMode === "scheduled" && "Start Scheduled Session"}
+              {practiceMode === "retake" && "Start Intentional Retake"}
+              {practiceMode === "challenge" && "Start All-Courses Challenge"}
+              <span className="rounded-md bg-slate-950/10 px-1.5 py-0.5 text-xs">{sessionQuestions.length}</span>
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </button>
           </div>
@@ -1218,15 +1721,26 @@ function DailyPractice({
             </div>
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/80">Session complete</p>
             <h3 className="mt-3 text-2xl font-semibold tracking-tight text-slate-50 sm:text-3xl">
-              Daily Recall Complete! All target memories reinforced.
+              {practiceMode === "challenge"
+                ? "All-Courses Challenge Complete!"
+                : practiceMode === "retake"
+                  ? "Intentional Retake Complete!"
+                  : "Daily Recall Complete! All target memories reinforced."}
             </h3>
             <p className="mt-3 text-sm text-slate-500">
-              {sessionTotal} scheduled question{sessionTotal === 1 ? "" : "s"} reviewed from {selectedChapter} · {selectedSubchapter}.
+              {sessionTotal} question{sessionTotal === 1 ? "" : "s"} reviewed from {sessionScopeLabel}.
+              Every rating has updated the normal review schedule.
             </p>
-            <div className="mt-5 grid w-full gap-3 text-left sm:grid-cols-2">
-              <ScopeProgressCard label="Chapter" name={selectedChapter} questions={selectedChapterQuestions} today={today} accent="cyan" />
-              <ScopeProgressCard label="Subchapter" name={selectedSubchapter} questions={selectedSubchapterQuestions} today={today} accent="violet" />
-            </div>
+            {practiceMode === "challenge" ? (
+              <div className="mt-5 w-full text-left">
+                <ScopeProgressCard label="All courses" name="Full question library" questions={questions} today={today} accent="violet" />
+              </div>
+            ) : (
+              <div className="mt-5 grid w-full gap-3 text-left sm:grid-cols-2">
+                <ScopeProgressCard label="Chapter" name={selectedChapter} questions={selectedChapterQuestions} today={today} accent="cyan" />
+                <ScopeProgressCard label="Subchapter" name={selectedSubchapter} questions={selectedSubchapterQuestions} today={today} accent="violet" />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1242,10 +1756,16 @@ function DailyPractice({
 
         {sessionActive && currentQuestion && (
           <div className="relative mx-auto max-w-3xl">
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <ScopeProgressCard label="Chapter" name={selectedChapter} questions={selectedChapterQuestions} today={today} accent="cyan" />
-              <ScopeProgressCard label="Subchapter" name={selectedSubchapter} questions={selectedSubchapterQuestions} today={today} accent="violet" />
-            </div>
+            {practiceMode === "challenge" ? (
+              <div className="mb-4">
+                <ScopeProgressCard label="All courses" name="Full question library" questions={questions} today={today} accent="violet" />
+              </div>
+            ) : (
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <ScopeProgressCard label="Chapter" name={selectedChapter} questions={selectedChapterQuestions} today={today} accent="cyan" />
+                <ScopeProgressCard label="Subchapter" name={selectedSubchapter} questions={selectedSubchapterQuestions} today={today} accent="violet" />
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-200">{currentQuestion.course}</span>
@@ -1268,7 +1788,13 @@ function DailyPractice({
                 <span className="flex items-center gap-1.5"><CalendarCheck2 className="size-3.5" />Due {formatDate(currentQuestion.nextReviewDate)}</span>
               </div>
               <p className="mt-7 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/70">Question</p>
-              <p data-testid="practice-question" className="mt-3 whitespace-pre-wrap text-xl font-medium leading-8 tracking-tight text-slate-100 sm:text-2xl">{currentQuestion.question}</p>
+              <div data-testid="practice-question">
+                <RichTextView
+                  value={currentQuestion.question}
+                  variant="question"
+                  className="mt-3 text-xl font-medium leading-8 tracking-tight text-slate-100 sm:text-2xl"
+                />
+              </div>
 
               {!answerVisible ? (
                 <button
@@ -1281,7 +1807,11 @@ function DailyPractice({
               ) : (
                 <div className="mt-7 border-t border-slate-800 pt-7 transition-all duration-500">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300/70">Answer</p>
-                  <p className="mt-3 whitespace-pre-wrap font-mono text-sm leading-7 text-slate-300">{currentQuestion.answer}</p>
+                  <RichTextView
+                    value={currentQuestion.answer}
+                    variant="answer"
+                    className="mt-3 text-sm leading-7 text-slate-300"
+                  />
                   <div className="mt-7 grid gap-2 sm:grid-cols-5">
                     {REVIEW_LEVELS.map(({ level, label, days, color }) => {
                       const nextDate = addDaysToDate(today, days);
@@ -1332,6 +1862,7 @@ function AddQuestionModal({
   const [subchapter, setSubchapter] = useState(editingQuestion?.subchapter ?? "");
   const [questionText, setQuestionText] = useState(editingQuestion?.question ?? "");
   const [answerText, setAnswerText] = useState(editingQuestion?.answer ?? "");
+  const [contentError, setContentError] = useState("");
 
   const existingChapters = useMemo(
     () =>
@@ -1376,9 +1907,14 @@ function AddQuestionModal({
     event.preventDefault();
     const cleanChapter = chapter.trim();
     const cleanSubchapter = subchapter.trim();
-    const cleanQuestion = questionText.trim();
-    const cleanAnswer = answerText.trim();
-    if (!course || !cleanChapter || !cleanSubchapter || !cleanQuestion || !cleanAnswer) return;
+    const cleanQuestion = sanitizeRichHtml(questionText);
+    const cleanAnswer = sanitizeRichHtml(answerText);
+    if (!course || !cleanChapter || !cleanSubchapter) return;
+    if (!hasMeaningfulRichContent(cleanQuestion) || !hasMeaningfulRichContent(cleanAnswer)) {
+      setContentError("Add content to both the question and answer documents.");
+      return;
+    }
+    setContentError("");
 
     const today = getLocalDateKey();
     if (editingQuestion) {
@@ -1409,6 +1945,7 @@ function AddQuestionModal({
         nextReviewDate: today,
         reviewCount: 0,
         reviewHistory: [],
+        contentVersion: 1,
       });
     }
     onClose();
@@ -1427,7 +1964,7 @@ function AddQuestionModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-700/80 bg-[#0f172a] shadow-[0_32px_120px_rgba(0,0,0,0.6)]">
+      <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-700/80 bg-[#0f172a] shadow-[0_32px_120px_rgba(0,0,0,0.6)]">
         <div className="flex items-start justify-between border-b border-slate-800 px-6 py-5 sm:px-7">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.17em] text-cyan-300">
@@ -1511,45 +2048,47 @@ function AddQuestionModal({
           </label>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <label className="text-sm font-medium text-slate-300">
+            <div className="text-sm font-medium text-slate-300">
               <span className="flex items-center justify-between gap-3">
                 Question text
                 <span className="flex items-center gap-1 text-[11px] font-normal text-slate-600">
-                  <Code2 className="size-3.5" /> Markdown supported
+                  <Code2 className="size-3.5" /> Nirmala UI · fixed
                 </span>
               </span>
-              <textarea
-                required
-                rows={8}
+              <RichTextEditor
                 value={questionText}
-                onChange={(event) => setQuestionText(event.target.value)}
+                onChange={setQuestionText}
+                variant="question"
                 placeholder="Write a precise active-recall prompt…"
-                className={`${inputStyles} resize-y leading-6`}
               />
-            </label>
-            <label className="text-sm font-medium text-slate-300">
+            </div>
+            <div className="text-sm font-medium text-slate-300">
               <span className="flex items-center justify-between gap-3">
                 Answer text
                 <span className="flex items-center gap-1 text-[11px] font-normal text-slate-600">
-                  <Code2 className="size-3.5" /> Code fences supported
+                  <Code2 className="size-3.5" /> Answer style · fixed
                 </span>
               </span>
-              <textarea
-                required
-                rows={8}
+              <RichTextEditor
                 value={answerText}
-                onChange={(event) => setAnswerText(event.target.value)}
+                onChange={setAnswerText}
+                variant="answer"
                 placeholder="Write the ideal answer…"
-                className={`${inputStyles} resize-y leading-6`}
               />
-            </label>
+            </div>
           </div>
+
+          {contentError && (
+            <p className="rounded-xl border border-rose-400/15 bg-rose-400/[0.05] px-3.5 py-2.5 text-xs text-rose-300/80">
+              {contentError}
+            </p>
+          )}
 
           <div className="flex items-center justify-between gap-4 border-t border-slate-800 pt-5">
             <p className="text-xs text-slate-600">
               {editingQuestion
-                ? "Review level, dates, and progress will be preserved."
-                : "New questions begin at Level 1 and are due today."}
+                ? "Formatting, pictures, equations, review level, dates, and progress will be preserved."
+                : "New questions begin at Level 1 and are due today. Pictures are compressed and stored with backups."}
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -1636,8 +2175,8 @@ function QuestionBank({
       const matchesSearch =
         !normalizedSearch ||
         [
-          question.question,
-          question.answer,
+          richTextToPlainText(question.question),
+          richTextToPlainText(question.answer),
           question.chapter,
           question.subchapter,
         ].some((value) => value.toLowerCase().includes(normalizedSearch));
@@ -1844,8 +2383,8 @@ function QuestionBank({
                         Level {question.level}
                       </span>
                     </div>
-                    <h3 className="mt-3 line-clamp-2 text-sm font-medium leading-6 text-slate-200">
-                      {question.question}
+                    <h3 className="rich-question mt-3 line-clamp-2 text-sm font-medium leading-6 text-slate-200">
+                      {richTextToPlainText(question.question)}
                     </h3>
                   </div>
                   <ChevronDown
@@ -1862,17 +2401,13 @@ function QuestionBank({
                         <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-600">
                           Question
                         </p>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">
-                          {question.question}
-                        </p>
+                        <RichTextView value={question.question} variant="question" className="mt-2 text-sm leading-6 text-slate-300" />
                       </div>
                       <div className="rounded-xl border border-emerald-400/10 bg-emerald-400/[0.025] p-4">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-emerald-400/60">
                           Answer
                         </p>
-                        <p className="mt-2 whitespace-pre-wrap font-mono text-sm leading-6 text-slate-300">
-                          {question.answer}
-                        </p>
+                        <RichTextView value={question.answer} variant="answer" className="mt-2 text-sm leading-6 text-slate-300" />
                       </div>
                     </div>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -2123,7 +2658,7 @@ function AnalyticsDashboard({
               {!curveQuestions.length && <option value="">No questions available</option>}
               {curveQuestions.map((question) => (
                 <option key={question.id} value={question.id}>
-                  {question.course} · {question.chapter} · {question.subchapter} — {question.question}
+                  {question.course} · {question.chapter} · {question.subchapter} — {richTextToPlainText(question.question)}
                 </option>
               ))}
             </select>
@@ -2136,7 +2671,7 @@ function AnalyticsDashboard({
               <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-400">{curveQuestion.chapter}</span>
               <span className="text-slate-600">{curveQuestion.subchapter}</span>
             </div>
-            <p className="mb-4 text-sm font-medium leading-6 text-slate-300">{curveQuestion.question}</p>
+            <RichTextView value={curveQuestion.question} variant="question" className="mb-4 text-sm font-medium leading-6 text-slate-300" />
             <QuestionForgettingCurve question={curveQuestion} />
           </div>
         ) : (
@@ -2286,7 +2821,7 @@ function SettingsPage({
 
   function exportData() {
     const backup = {
-      version: 3,
+      version: 4,
       exportedAt: new Date().toISOString(),
       courses,
       questions,
@@ -2500,11 +3035,12 @@ function SettingsPage({
             </span>
             <div>
               <h3 className="text-sm font-semibold text-slate-200">Export study data</h3>
-              <p className="mt-1 text-xs text-slate-600">Questions, scheduling, progress, and streak history</p>
+              <p className="mt-1 text-xs text-slate-600">Rich documents, pictures, equations, scheduling, and progress</p>
             </div>
           </div>
           <p className="mt-5 text-sm leading-6 text-slate-500">
-            Download a readable JSON backup that can be restored on this or another device.
+            Download a portable JSON backup that includes embedded pictures and can be
+            restored on this or another device. Backups containing pictures may be larger.
           </p>
           <button
             type="button"

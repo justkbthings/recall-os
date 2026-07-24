@@ -18,3 +18,99 @@ select,
 textarea {
   font: inherit;
 }
+
+.rich-question {
+  font-family: "Nirmala UI", "Segoe UI", sans-serif;
+}
+
+.rich-answer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.rich-editor:empty::before {
+  color: #334155;
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.rich-content p,
+.rich-content div,
+.rich-content blockquote,
+.rich-content pre {
+  margin: 0.45rem 0;
+}
+
+.rich-content p:first-child,
+.rich-content div:first-child,
+.rich-content blockquote:first-child,
+.rich-content pre:first-child {
+  margin-top: 0;
+}
+
+.rich-content p:last-child,
+.rich-content div:last-child,
+.rich-content blockquote:last-child,
+.rich-content pre:last-child {
+  margin-bottom: 0;
+}
+
+.rich-content ul {
+  list-style: disc;
+  margin: 0.5rem 0;
+  padding-left: 1.6rem;
+}
+
+.rich-content ol {
+  list-style: decimal;
+  margin: 0.5rem 0;
+  padding-left: 1.6rem;
+}
+
+.rich-content li {
+  margin: 0.2rem 0;
+  padding-left: 0.15rem;
+}
+
+.rich-content blockquote {
+  border-left: 3px solid #334155;
+  color: #94a3b8;
+  padding-left: 0.9rem;
+}
+
+.rich-content img {
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 0.85rem;
+  display: block;
+  height: auto;
+  margin: 0.85rem auto;
+  max-height: 520px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.rich-equation {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0 0.15rem;
+  vertical-align: middle;
+}
+
+.rich-equation-block {
+  display: block;
+  margin: 0.8rem auto;
+  padding: 0.65rem 0.8rem;
+  text-align: center;
+}
+
+.rich-editor [data-equation] {
+  background: rgb(34 211 238 / 0.07);
+  border: 1px dashed rgb(34 211 238 / 0.25);
+  border-radius: 0.5rem;
+  color: #a5f3fc;
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin: 0.15rem;
+  padding: 0.2rem 0.45rem;
+}
