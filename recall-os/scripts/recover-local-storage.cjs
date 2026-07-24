@@ -60,6 +60,18 @@ function extractJsonArrays(text, storageKey) {
   return candidates
 }
 
+function plainTextToRichHtml(value) {
+  const escaped = String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+    .replace(/\r\n?/g, '\n')
+    .replaceAll('\n', '<br>')
+  return `<p>${escaped}</p>`
+}
+
 async function main() {
   const entries = await fsPromises.readdir(levelDbDirectory, { withFileTypes: true })
   const dataFiles = entries
@@ -87,20 +99,30 @@ async function main() {
   }
 
   const questionsWithReviewHistory = recoveredQuestions.map((question) => {
-    if (Array.isArray(question.reviewHistory)) return question
     const reviewCount = Number.isFinite(question.reviewCount) ? question.reviewCount : 0
+    const reviewHistory = Array.isArray(question.reviewHistory)
+      ? question.reviewHistory
+      : reviewCount > 0 && question.lastReviewed && question.nextReviewDate
+        ? [
+            {
+              reviewedAt: question.lastReviewed,
+              level: question.level,
+              nextReviewDate: question.nextReviewDate,
+            },
+          ]
+        : []
     return {
       ...question,
-      reviewHistory:
-        reviewCount > 0 && question.lastReviewed && question.nextReviewDate
-          ? [
-              {
-                reviewedAt: question.lastReviewed,
-                level: question.level,
-                nextReviewDate: question.nextReviewDate,
-              },
-            ]
-          : [],
+      question:
+        question.contentVersion === 1
+          ? question.question
+          : plainTextToRichHtml(question.question),
+      answer:
+        question.contentVersion === 1
+          ? question.answer
+          : plainTextToRichHtml(question.answer),
+      reviewHistory,
+      contentVersion: 1,
     }
   })
 
@@ -109,7 +131,7 @@ async function main() {
   ]
   const recoveredActivityDates = activityCandidates.at(-1) || []
   const recovery = {
-    version: 3,
+    version: 4,
     recoveredAt: new Date().toISOString(),
     source: levelDbDirectory,
     courses: recoveredCourses,

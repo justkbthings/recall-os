@@ -87,8 +87,15 @@ async function main() {
         questionCount: questions.length,
         courses,
         questionCourses: [...new Set(questions.map((question) => question.course))],
+        richContentMigrated: questions.every((question) => question.contentVersion === 1),
       };
     })()`)
+    if (
+      storageResult.result.value.questionCount > 0 &&
+      !storageResult.result.value.richContentMigrated
+    ) {
+      throw new Error('Existing questions were not migrated to rich-content format.')
+    }
 
     const practiceTargetResult = await evaluate(`(() => {
       const questions = JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]');
@@ -122,6 +129,28 @@ async function main() {
     const practiceTarget = practiceTargetResult.result.value
     let practiceResult = { available: false }
     if (practiceTarget.available) {
+      const modeResult = await evaluate(`(() => {
+        const modes = [...document.querySelectorAll('[data-practice-mode]')];
+        const challengeButton = document.querySelector('[data-practice-mode="challenge"]');
+        challengeButton?.click();
+        return {
+          modeCount: modes.length,
+          scheduledVisible: Boolean(document.querySelector('[data-practice-mode="scheduled"]')),
+          retakeVisible: Boolean(document.querySelector('[data-practice-mode="retake"]')),
+          challengeVisible: Boolean(challengeButton),
+        };
+      })()`)
+      await delay(250)
+      const challengeResult = await evaluate(`(() => {
+        const questions = JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]');
+        const startButton = document.querySelector('[data-testid="start-practice-session"]');
+        return {
+          challengeStartEnabled: Boolean(startButton && !startButton.disabled),
+          challengeIncludesAllQuestions: startButton?.textContent.includes(String(questions.length)) || false,
+        };
+      })()`)
+      await evaluate(`document.querySelector('[data-practice-mode="scheduled"]')?.click()`)
+      await delay(250)
       await evaluate(`(() => {
         const chapterSelect = document.querySelector('[aria-label="Choose practice chapter"]');
         const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
@@ -156,6 +185,17 @@ async function main() {
             left.nextReviewDate.localeCompare(right.nextReviewDate) ||
             left.addedAt.localeCompare(right.addedAt) ||
             left.id.localeCompare(right.id));
+        const toPlainText = (value) => {
+          const template = document.createElement('template');
+          template.innerHTML = value;
+          template.content.querySelectorAll('[data-equation]').forEach((element) => {
+            element.replaceWith(' ' + (element.getAttribute('data-equation') || 'equation') + ' ');
+          });
+          template.content.querySelectorAll('img').forEach((element) => {
+            element.replaceWith(' ' + (element.getAttribute('alt') || 'Study image') + ' ');
+          });
+          return (template.content.textContent || '').replace(/\\s+/g, ' ').trim();
+        };
         const startButton = document.querySelector('[data-testid="start-practice-session"]');
         const result = {
           available: true,
@@ -164,16 +204,18 @@ async function main() {
           chapterProgressVisible: Boolean(document.querySelector('[data-scope-progress="chapter"]')),
           subchapterProgressVisible: Boolean(document.querySelector('[data-scope-progress="subchapter"]')),
           startEnabled: Boolean(startButton && !startButton.disabled),
-          expectedFirstQuestion: scopedDue[0]?.question || null,
+          expectedFirstQuestion: scopedDue[0] ? toPlainText(scopedDue[0].question) : null,
         };
         if (scopedDue.length) startButton?.click();
         return result;
       })()`)
       await delay(350)
       const cardResult = await evaluate(`(() => ({
-        displayedFirstQuestion: document.querySelector('[data-testid="practice-question"]')?.textContent || null,
+        displayedFirstQuestion: document.querySelector('[data-testid="practice-question"]')?.textContent?.replace(/\\s+/g, ' ').trim() || null,
       }))()`)
       practiceResult = {
+        ...modeResult.result.value,
+        ...challengeResult.result.value,
         ...scopeResult.result.value,
         ...cardResult.result.value,
       }
@@ -183,6 +225,11 @@ async function main() {
         !practiceResult.subchapterSelectorVisible ||
         !practiceResult.chapterProgressVisible ||
         !practiceResult.subchapterProgressVisible ||
+        practiceResult.modeCount !== 3 ||
+        !practiceResult.retakeVisible ||
+        !practiceResult.challengeVisible ||
+        !practiceResult.challengeStartEnabled ||
+        !practiceResult.challengeIncludesAllQuestions ||
         (practiceTarget.hasDueQuestion &&
           practiceResult.displayedFirstQuestion !== practiceResult.expectedFirstQuestion)
       ) {
@@ -207,7 +254,31 @@ async function main() {
     const modalResult = await evaluate(`(() => ({
       editModalOpen: Boolean(document.querySelector('#question-editor-title')),
       courseOptionCount: document.querySelector('[role="dialog"] select')?.options.length || 0,
+      richEditorCount: document.querySelectorAll('[role="dialog"] [contenteditable="true"]').length,
+      boldButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Bold"]').length,
+      italicButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Italic"]').length,
+      underlineButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Underline"]').length,
+      listButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Bulleted list"]').length,
+      indentButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Increase indent"]').length,
+      equationButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Insert equation"]').length,
+      imageButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Insert picture"]').length,
+      questionUsesNirmala: getComputedStyle(document.querySelector('[role="dialog"] .rich-question')).fontFamily.includes('Nirmala'),
+      fontSelectorAbsent: ![...document.querySelectorAll('[role="dialog"] select')].some((select) => /font/i.test(select.getAttribute('aria-label') || '')),
     }))()`)
+    if (
+      modalResult.result.value.richEditorCount !== 2 ||
+      modalResult.result.value.boldButtonCount !== 2 ||
+      modalResult.result.value.italicButtonCount !== 2 ||
+      modalResult.result.value.underlineButtonCount !== 2 ||
+      modalResult.result.value.listButtonCount !== 2 ||
+      modalResult.result.value.indentButtonCount !== 2 ||
+      modalResult.result.value.equationButtonCount !== 2 ||
+      modalResult.result.value.imageButtonCount !== 2 ||
+      !modalResult.result.value.questionUsesNirmala ||
+      !modalResult.result.value.fontSelectorAbsent
+    ) {
+      throw new Error(`Rich document editor verification failed: ${JSON.stringify(modalResult.result.value)}`)
+    }
     await evaluate(`document.querySelector('[aria-label="Close question editor"]')?.click()`)
     await delay(200)
     const attemptResult = await evaluate(`(() => {
