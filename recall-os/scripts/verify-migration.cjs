@@ -88,13 +88,19 @@ async function main() {
         courses,
         questionCourses: [...new Set(questions.map((question) => question.course))],
         richContentMigrated: questions.every((question) => question.contentVersion === 1),
+        optionalNotesMigrated: questions.every((question) => typeof question.note === 'string'),
+        storedTheme: localStorage.getItem('active-recall.theme.v1') || 'midnight',
+        renderedTheme: document.querySelector('[data-theme]')?.getAttribute('data-theme') || null,
       };
     })()`)
     if (
       storageResult.result.value.questionCount > 0 &&
-      !storageResult.result.value.richContentMigrated
+      (!storageResult.result.value.richContentMigrated ||
+        !storageResult.result.value.optionalNotesMigrated)
     ) {
-      throw new Error('Existing questions were not migrated to rich-content format.')
+      throw new Error(
+        `Existing questions were not fully migrated: ${JSON.stringify(storageResult.result.value)}`,
+      )
     }
 
     const practiceTargetResult = await evaluate(`(() => {
@@ -264,18 +270,20 @@ async function main() {
       imageButtonCount: document.querySelectorAll('[role="dialog"] [aria-label="Insert picture"]').length,
       questionUsesNirmala: getComputedStyle(document.querySelector('[role="dialog"] .rich-question')).fontFamily.includes('Nirmala'),
       fontSelectorAbsent: ![...document.querySelectorAll('[role="dialog"] select')].some((select) => /font/i.test(select.getAttribute('aria-label') || '')),
+      optionalNoteVisible: document.querySelector('[role="dialog"]')?.innerText.includes('Optional note') || false,
     }))()`)
     if (
-      modalResult.result.value.richEditorCount !== 2 ||
-      modalResult.result.value.boldButtonCount !== 2 ||
-      modalResult.result.value.italicButtonCount !== 2 ||
-      modalResult.result.value.underlineButtonCount !== 2 ||
-      modalResult.result.value.listButtonCount !== 2 ||
-      modalResult.result.value.indentButtonCount !== 2 ||
-      modalResult.result.value.equationButtonCount !== 2 ||
-      modalResult.result.value.imageButtonCount !== 2 ||
+      modalResult.result.value.richEditorCount !== 3 ||
+      modalResult.result.value.boldButtonCount !== 3 ||
+      modalResult.result.value.italicButtonCount !== 3 ||
+      modalResult.result.value.underlineButtonCount !== 3 ||
+      modalResult.result.value.listButtonCount !== 3 ||
+      modalResult.result.value.indentButtonCount !== 3 ||
+      modalResult.result.value.equationButtonCount !== 3 ||
+      modalResult.result.value.imageButtonCount !== 3 ||
       !modalResult.result.value.questionUsesNirmala ||
-      !modalResult.result.value.fontSelectorAbsent
+      !modalResult.result.value.fontSelectorAbsent ||
+      !modalResult.result.value.optionalNoteVisible
     ) {
       throw new Error(`Rich document editor verification failed: ${JSON.stringify(modalResult.result.value)}`)
     }
@@ -289,6 +297,62 @@ async function main() {
         reviewHistoryMigrated: questions.every((question) => Array.isArray(question.reviewHistory)),
       };
     })()`)
+    await evaluate(`(() => {
+      const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('Recall Calendar'));
+      button?.click();
+    })()`)
+    await delay(350)
+    const calendarBaseResult = await evaluate(`(() => ({
+      visible: Boolean(document.querySelector('[data-calendar-view]')),
+      initialMode: document.querySelector('[data-calendar-view]')?.getAttribute('data-calendar-mode') || null,
+      modeButtonCount: document.querySelectorAll('[data-calendar-mode-button]').length,
+      goldDateCount: document.querySelectorAll('[data-recall-active-date]').length,
+    }))()`)
+    await evaluate(`document.querySelector('[data-calendar-mode-button="year"]')?.click()`)
+    await delay(250)
+    const calendarYearResult = await evaluate(`(() => {
+      const monthButtons = [...document.querySelectorAll('[data-calendar-month]')];
+      const currentMonth = String(new Date().getMonth() + 1);
+      monthButtons.find((button) => button.getAttribute('data-calendar-month') === currentMonth)?.click();
+      return {
+        yearMode: document.querySelector('[data-calendar-view]')?.getAttribute('data-calendar-mode') || null,
+        monthCount: monthButtons.length,
+      };
+    })()`)
+    await delay(250)
+    const calendarMonthResult = await evaluate(`(() => {
+      const firstDate = document.querySelector('[data-calendar-date]');
+      const result = {
+        monthMode: document.querySelector('[data-calendar-view]')?.getAttribute('data-calendar-mode') || null,
+        dateCellCount: document.querySelectorAll('[data-calendar-date]').length,
+      };
+      firstDate?.click();
+      return result;
+    })()`)
+    await delay(250)
+    const calendarDayResult = await evaluate(`(() => ({
+      dayMode: document.querySelector('[data-calendar-view]')?.getAttribute('data-calendar-mode') || null,
+      hourRowCount: document.querySelectorAll('[data-calendar-hour]').length,
+    }))()`)
+    const calendarResult = {
+      ...calendarBaseResult.result.value,
+      ...calendarYearResult.result.value,
+      ...calendarMonthResult.result.value,
+      ...calendarDayResult.result.value,
+    }
+    if (
+      !calendarResult.visible ||
+      calendarResult.initialMode !== 'month' ||
+      calendarResult.modeButtonCount !== 4 ||
+      calendarResult.yearMode !== 'year' ||
+      calendarResult.monthCount !== 12 ||
+      calendarResult.monthMode !== 'month' ||
+      calendarResult.dateCellCount !== 42 ||
+      calendarResult.dayMode !== 'day' ||
+      calendarResult.hourRowCount !== 24
+    ) {
+      throw new Error(`Recall calendar verification failed: ${JSON.stringify(calendarResult)}`)
+    }
     await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('Analytics'));
       button?.click();
@@ -324,7 +388,16 @@ async function main() {
       addButtonVisible: [...document.querySelectorAll('button')].some((item) => item.textContent.trim() === 'Add course'),
       ownershipVisible: document.body.innerText.includes('Karabo Goodwill Nkambule'),
       versionVisible: document.body.innerText.includes('Version ${appVersion}'),
+      themeOptionCount: document.querySelectorAll('[data-theme-option]').length,
+      currentThemeStillSelected: document.querySelector('[data-theme-option="midnight"]')?.getAttribute('aria-pressed') === 'true',
     }))()`)
+    if (
+      courseManagerResult.result.value.themeOptionCount !== 7 ||
+      !courseManagerResult.result.value.currentThemeStillSelected ||
+      storageResult.result.value.renderedTheme !== 'midnight'
+    ) {
+      throw new Error(`Theme verification failed: ${JSON.stringify(courseManagerResult.result.value)}`)
+    }
 
     socket.close()
     console.log(
@@ -336,6 +409,7 @@ async function main() {
           editAvailable: editorResult.result.value,
           editor: modalResult.result.value,
           attempts: attemptResult.result.value,
+          calendar: calendarResult,
           questionCurve: curveResult.result.value,
           courseManager: courseManagerResult.result.value,
         },

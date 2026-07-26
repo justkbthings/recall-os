@@ -121,6 +121,12 @@ async function main() {
         question.contentVersion === 1
           ? question.answer
           : plainTextToRichHtml(question.answer),
+      note:
+        typeof question.note === 'string'
+          ? question.contentVersion === 1
+            ? question.note
+            : plainTextToRichHtml(question.note)
+          : '',
       reviewHistory,
       contentVersion: 1,
     }
@@ -131,12 +137,13 @@ async function main() {
   ]
   const recoveredActivityDates = activityCandidates.at(-1) || []
   const recovery = {
-    version: 4,
+    version: 5,
     recoveredAt: new Date().toISOString(),
     source: levelDbDirectory,
     courses: recoveredCourses,
     questions: questionsWithReviewHistory,
     activityDates: recoveredActivityDates,
+    theme: 'midnight',
   }
 
   console.log(

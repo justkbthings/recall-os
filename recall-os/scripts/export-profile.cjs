@@ -65,6 +65,12 @@ function migrateQuestion(question) {
       question.contentVersion === 1
         ? question.answer
         : plainTextToRichHtml(question.answer),
+    note:
+      typeof question.note === 'string'
+        ? question.contentVersion === 1
+          ? question.note
+          : plainTextToRichHtml(question.note)
+        : '',
     reviewHistory,
     contentVersion: 1,
   }
@@ -150,6 +156,7 @@ async function main() {
         questions: JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]'),
         courses: JSON.parse(localStorage.getItem('active-recall.courses.v1') || '[]'),
         activityDates: JSON.parse(localStorage.getItem('active-recall.activity-dates.v1') || '[]'),
+        theme: localStorage.getItem('active-recall.theme.v1') || 'midnight',
       }))()`,
     )
     const questions = Array.isArray(profile.questions)
@@ -159,12 +166,13 @@ async function main() {
       throw new Error('The installed profile contains no questions; refusing to overwrite a backup.')
     }
     const backup = {
-      version: 4,
+      version: 5,
       exportedAt: new Date().toISOString(),
       source: installedExecutable,
       courses: Array.isArray(profile.courses) ? profile.courses : [],
       questions,
       activityDates: Array.isArray(profile.activityDates) ? profile.activityDates : [],
+      theme: typeof profile.theme === 'string' ? profile.theme : 'midnight',
     }
     await fs.mkdir(recoveryDirectory, { recursive: true })
     await fs.writeFile(recoveryFile, `${JSON.stringify(backup, null, 2)}\n`, 'utf8')
@@ -182,6 +190,10 @@ async function main() {
           richContentQuestions: questions.filter(
             (question) => question.contentVersion === 1,
           ).length,
+          questionsWithOptionalNoteField: questions.filter(
+            (question) => typeof question.note === 'string',
+          ).length,
+          theme: backup.theme,
         },
         null,
         2,
