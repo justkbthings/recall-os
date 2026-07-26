@@ -2,7 +2,7 @@
   "name": "recall-os",
   "productName": "Recall OS",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A private, local-first active recall and spaced repetition desktop app.",
   "author": "Karabo Goodwill Nkambule",
   "license": "UNLICENSED",

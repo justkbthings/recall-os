@@ -19,6 +19,8 @@ import {
   CalendarDays,
   CalendarPlus,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   Code2,
@@ -33,6 +35,7 @@ import {
   Layers3,
   List,
   ListOrdered,
+  Palette,
   Pencil,
   Plus,
   RotateCcw,
@@ -41,6 +44,7 @@ import {
   ShieldCheck,
   Sparkles,
   Sigma,
+  StickyNote,
   Trash2,
   Trophy,
   Underline,
@@ -52,8 +56,16 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 
 type CourseCode = string;
-type NavigationId = "practice" | "questions" | "analytics" | "settings";
+type NavigationId = "practice" | "questions" | "calendar" | "analytics" | "settings";
 type RecallLevel = 1 | 2 | 3 | 4 | 5;
+type ThemeId =
+  | "midnight"
+  | "dark-note"
+  | "ember"
+  | "nordic"
+  | "lavender"
+  | "forest"
+  | "rosewood";
 
 export interface ReviewAttempt {
   reviewedAt: string;
@@ -68,6 +80,7 @@ export interface Question {
   subchapter: string;
   question: string;
   answer: string;
+  note: string;
   level: RecallLevel;
   addedAt: string;
   lastReviewed: string;
@@ -80,7 +93,8 @@ export interface Question {
 const STORAGE_KEY = "active-recall.questions.v1";
 const ACTIVITY_STORAGE_KEY = "active-recall.activity-dates.v1";
 const COURSES_STORAGE_KEY = "active-recall.courses.v1";
-const APP_VERSION = "1.4.0";
+const THEME_STORAGE_KEY = "active-recall.theme.v1";
+const APP_VERSION = "1.5.0";
 const COPYRIGHT_OWNER = "Karabo Goodwill Nkambule";
 const LEGACY_DEFAULT_COURSES: CourseCode[] = ["CSC3003S", "INF3012S", "AST1000S"];
 const REVIEW_LEVELS = [
@@ -91,6 +105,56 @@ const REVIEW_LEVELS = [
   { level: 5, label: "Flawless", days: 14, color: "cyan" },
 ] as const;
 
+const THEMES: Array<{
+  id: ThemeId;
+  name: string;
+  description: string;
+  colors: [string, string, string, string];
+}> = [
+  {
+    id: "midnight",
+    name: "Midnight Slate",
+    description: "Your original Recall OS theme",
+    colors: ["#090d16", "#0f172a", "#1e293b", "#22d3ee"],
+  },
+  {
+    id: "dark-note",
+    name: "Dark Note",
+    description: "Charcoal, muted teal, and warm gold",
+    colors: ["#181a1b", "#202425", "#334044", "#d5a85a"],
+  },
+  {
+    id: "ember",
+    name: "Ember Study",
+    description: "Deep cocoa with a calm amber glow",
+    colors: ["#16110f", "#211815", "#44302a", "#f2a65a"],
+  },
+  {
+    id: "nordic",
+    name: "Nordic Focus",
+    description: "Blue slate with a crisp orange accent",
+    colors: ["#243044", "#31415b", "#4b607b", "#ff9b50"],
+  },
+  {
+    id: "lavender",
+    name: "Lavender Night",
+    description: "Ink purple with soft lavender",
+    colors: ["#11101c", "#1c1930", "#393354", "#b8a5ff"],
+  },
+  {
+    id: "forest",
+    name: "Forest Recall",
+    description: "Evergreen surfaces with mint accents",
+    colors: ["#0c1512", "#13221d", "#294239", "#70d6a8"],
+  },
+  {
+    id: "rosewood",
+    name: "Rosewood",
+    description: "Burgundy shadows with dusty rose",
+    colors: ["#190f15", "#281720", "#4a2b38", "#f08da9"],
+  },
+];
+
 const NAVIGATION: Array<{
   id: NavigationId;
   label: string;
@@ -98,6 +162,7 @@ const NAVIGATION: Array<{
 }> = [
   { id: "practice", label: "Daily Practice", icon: Zap },
   { id: "questions", label: "Question Bank", icon: BookOpen },
+  { id: "calendar", label: "Recall Calendar", icon: CalendarDays },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -176,6 +241,12 @@ function normalizeQuestion(value: unknown): Question | null {
     answer: richContent
       ? sanitizeRichHtml(question.answer!)
       : plainTextToRichHtml(question.answer!),
+    note:
+      typeof question.note === "string"
+        ? richContent
+          ? sanitizeRichHtml(question.note)
+          : plainTextToRichHtml(question.note)
+        : "",
     level: question.level as Question["level"],
     addedAt:
       typeof question.addedAt === "string"
@@ -323,6 +394,24 @@ function useStoredActivityDates(questions: Question[]) {
   return [activityDates, setActivityDates] as const;
 }
 
+function loadStoredTheme(): ThemeId {
+  if (typeof window === "undefined") return "midnight";
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return THEMES.some((theme) => theme.id === storedTheme)
+    ? (storedTheme as ThemeId)
+    : "midnight";
+}
+
+function useStoredTheme() {
+  const [theme, setTheme] = useState<ThemeId>(loadStoredTheme);
+
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  return [theme, setTheme] as const;
+}
+
 function getLocalDateKey(currentDate = new Date()): string {
   const timezoneOffset = currentDate.getTimezoneOffset() * 60_000;
   return new Date(currentDate.getTime() - timezoneOffset)
@@ -344,6 +433,34 @@ function formatDate(dateKey: string): string {
     month: "short",
     year: "numeric",
   }).format(parsedDate);
+}
+
+function dateKeyFromStudyTimestamp(value: string): string {
+  if (!value.includes("T")) return value.slice(0, 10);
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? value.slice(0, 10) : getLocalDateKey(parsedDate);
+}
+
+function dateFromKey(dateKey: string): Date {
+  return new Date(`${dateKey}T12:00:00`);
+}
+
+function shiftDateKey(dateKey: string, days: number): string {
+  return addDaysToDate(dateKey, days);
+}
+
+function startOfWeekKey(dateKey: string): string {
+  const date = dateFromKey(dateKey);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  return shiftDateKey(dateKey, -mondayOffset);
+}
+
+function monthGridDateKeys(year: number, month: number): string[] {
+  const firstDateKey = getLocalDateKey(new Date(year, month, 1, 12));
+  const firstDate = dateFromKey(firstDateKey);
+  const mondayOffset = (firstDate.getDay() + 6) % 7;
+  const firstGridDate = shiftDateKey(firstDateKey, -mondayOffset);
+  return Array.from({ length: 42 }, (_, index) => shiftDateKey(firstGridDate, index));
 }
 
 function parseStudyTimestamp(value: string): number {
@@ -1812,6 +1929,25 @@ function DailyPractice({
                     variant="answer"
                     className="mt-3 text-sm leading-7 text-slate-300"
                   />
+                  {hasMeaningfulRichContent(currentQuestion.note) && (
+                    <aside
+                      data-testid="practice-note"
+                      className="mt-5 rounded-2xl border border-amber-400/15 bg-amber-400/[0.045] p-4"
+                    >
+                      <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-300/80">
+                        <StickyNote className="size-3.5" />
+                        Extra note
+                        <span className="font-normal normal-case tracking-normal text-amber-200/40">
+                          Supporting context, not part of the answer
+                        </span>
+                      </p>
+                      <RichTextView
+                        value={currentQuestion.note}
+                        variant="answer"
+                        className="mt-3 text-sm leading-7 text-slate-300"
+                      />
+                    </aside>
+                  )}
                   <div className="mt-7 grid gap-2 sm:grid-cols-5">
                     {REVIEW_LEVELS.map(({ level, label, days, color }) => {
                       const nextDate = addDaysToDate(today, days);
@@ -1862,6 +1998,7 @@ function AddQuestionModal({
   const [subchapter, setSubchapter] = useState(editingQuestion?.subchapter ?? "");
   const [questionText, setQuestionText] = useState(editingQuestion?.question ?? "");
   const [answerText, setAnswerText] = useState(editingQuestion?.answer ?? "");
+  const [noteText, setNoteText] = useState(editingQuestion?.note ?? "");
   const [contentError, setContentError] = useState("");
 
   const existingChapters = useMemo(
@@ -1909,6 +2046,7 @@ function AddQuestionModal({
     const cleanSubchapter = subchapter.trim();
     const cleanQuestion = sanitizeRichHtml(questionText);
     const cleanAnswer = sanitizeRichHtml(answerText);
+    const cleanNote = sanitizeRichHtml(noteText);
     if (!course || !cleanChapter || !cleanSubchapter) return;
     if (!hasMeaningfulRichContent(cleanQuestion) || !hasMeaningfulRichContent(cleanAnswer)) {
       setContentError("Add content to both the question and answer documents.");
@@ -1925,6 +2063,7 @@ function AddQuestionModal({
         subchapter: cleanSubchapter,
         question: cleanQuestion,
         answer: cleanAnswer,
+        note: cleanNote,
       });
     } else {
       const id =
@@ -1939,6 +2078,7 @@ function AddQuestionModal({
         subchapter: cleanSubchapter,
         question: cleanQuestion,
         answer: cleanAnswer,
+        note: cleanNote,
         level: 1,
         addedAt: today,
         lastReviewed: today,
@@ -2078,6 +2218,26 @@ function AddQuestionModal({
             </div>
           </div>
 
+          <div className="text-sm font-medium text-slate-300">
+            <span className="flex flex-wrap items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                Optional note
+                <span className="rounded-full border border-amber-400/15 bg-amber-400/[0.05] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300/70">
+                  Extra context
+                </span>
+              </span>
+              <span className="text-[11px] font-normal text-slate-600">
+                Shown separately after the answer
+              </span>
+            </span>
+            <RichTextEditor
+              value={noteText}
+              onChange={setNoteText}
+              variant="answer"
+              placeholder="Add a helpful explanation, memory cue, related fact, equation, or picture (optional)…"
+            />
+          </div>
+
           {contentError && (
             <p className="rounded-xl border border-rose-400/15 bg-rose-400/[0.05] px-3.5 py-2.5 text-xs text-rose-300/80">
               {contentError}
@@ -2177,6 +2337,7 @@ function QuestionBank({
         [
           richTextToPlainText(question.question),
           richTextToPlainText(question.answer),
+          richTextToPlainText(question.note),
           question.chapter,
           question.subchapter,
         ].some((value) => value.toLowerCase().includes(normalizedSearch));
@@ -2410,6 +2571,18 @@ function QuestionBank({
                         <RichTextView value={question.answer} variant="answer" className="mt-2 text-sm leading-6 text-slate-300" />
                       </div>
                     </div>
+                    {hasMeaningfulRichContent(question.note) && (
+                      <div className="mt-4 rounded-xl border border-amber-400/15 bg-amber-400/[0.035] p-4">
+                        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-amber-300/70">
+                          <StickyNote className="size-3.5" />
+                          Optional note
+                          <span className="font-normal normal-case tracking-normal text-amber-200/35">
+                            Extra information
+                          </span>
+                        </p>
+                        <RichTextView value={question.note} variant="answer" className="mt-2 text-sm leading-6 text-slate-300" />
+                      </div>
+                    )}
                     <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5">
                         <CalendarPlus className="size-4 text-slate-600" />
@@ -2482,6 +2655,388 @@ function QuestionBank({
           onSave={saveQuestion}
         />
       )}
+    </div>
+  );
+}
+
+type CalendarView = "day" | "week" | "month" | "year";
+
+interface RecallCalendarEvent {
+  id: string;
+  questionId: string;
+  course: CourseCode;
+  chapter: string;
+  subchapter: string;
+  question: string;
+  reviewedAt: string;
+  dateKey: string;
+  level: RecallLevel;
+  nextReviewDate: string;
+  hasExactTime: boolean;
+}
+
+function RecallCalendar({
+  questions,
+  activityDates,
+}: {
+  questions: Question[];
+  activityDates: string[];
+}) {
+  const [view, setView] = useState<CalendarView>("month");
+  const [anchorDate, setAnchorDate] = useState(getLocalDateKey);
+  const events = useMemo<RecallCalendarEvent[]>(
+    () =>
+      questions
+        .flatMap((question) =>
+          question.reviewHistory.map((attempt, index) => ({
+            id: `${question.id}-${attempt.reviewedAt}-${index}`,
+            questionId: question.id,
+            course: question.course,
+            chapter: question.chapter,
+            subchapter: question.subchapter,
+            question: richTextToPlainText(question.question),
+            reviewedAt: attempt.reviewedAt,
+            dateKey: dateKeyFromStudyTimestamp(attempt.reviewedAt),
+            level: attempt.level,
+            nextReviewDate: attempt.nextReviewDate,
+            hasExactTime: attempt.reviewedAt.includes("T"),
+          })),
+        )
+        .sort((left, right) => parseStudyTimestamp(left.reviewedAt) - parseStudyTimestamp(right.reviewedAt)),
+    [questions],
+  );
+  const activeDateSet = useMemo(
+    () =>
+      new Set([
+        ...activityDates,
+        ...events.map((event) => event.dateKey),
+      ]),
+    [activityDates, events],
+  );
+  const eventCountByDate = useMemo(() => {
+    const counts = new Map<string, number>();
+    events.forEach((event) => counts.set(event.dateKey, (counts.get(event.dateKey) ?? 0) + 1));
+    return counts;
+  }, [events]);
+  const anchor = dateFromKey(anchorDate);
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  const weekStart = startOfWeekKey(anchorDate);
+  const weekDates = Array.from({ length: 7 }, (_, index) => shiftDateKey(weekStart, index));
+  const monthDates = monthGridDateKeys(year, month);
+  const dayEvents = events.filter((event) => event.dateKey === anchorDate);
+  const exactDayEvents = dayEvents.filter((event) => event.hasExactTime);
+  const legacyDayEvents = dayEvents.filter((event) => !event.hasExactTime);
+  const headerTitle =
+    view === "week"
+      ? `${new Intl.DateTimeFormat("en-ZA", { day: "numeric", month: "short" }).format(dateFromKey(weekStart))} – ${new Intl.DateTimeFormat("en-ZA", { day: "numeric", month: "short", year: "numeric" }).format(dateFromKey(weekDates[6]))}`
+      : view === "month"
+        ? new Intl.DateTimeFormat("en-ZA", { month: "long", year: "numeric" }).format(anchor)
+        : view === "year"
+          ? new Intl.DateTimeFormat("en-ZA", { year: "numeric" }).format(anchor)
+          : new Intl.DateTimeFormat("en-ZA", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            }).format(anchor);
+
+  function navigate(direction: -1 | 1) {
+    if (view === "day") {
+      setAnchorDate(shiftDateKey(anchorDate, direction));
+      return;
+    }
+    if (view === "week") {
+      setAnchorDate(shiftDateKey(anchorDate, direction * 7));
+      return;
+    }
+    if (view === "month") {
+      setAnchorDate(getLocalDateKey(new Date(year, month + direction, 1, 12)));
+      return;
+    }
+    setAnchorDate(getLocalDateKey(new Date(year + direction, month, 1, 12)));
+  }
+
+  function openDay(dateKey: string) {
+    setAnchorDate(dateKey);
+    setView("day");
+  }
+
+  function openMonth(targetYear: number, targetMonth: number) {
+    setAnchorDate(getLocalDateKey(new Date(targetYear, targetMonth, 1, 12)));
+    setView("month");
+  }
+
+  return (
+    <div
+      data-calendar-view
+      data-calendar-mode={view}
+      className="mx-auto w-full max-w-7xl px-8 py-9 lg:px-10 lg:py-12"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
+            <CalendarDays className="size-4" strokeWidth={1.8} />
+            Recall history
+          </div>
+          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-slate-50">
+            Study calendar
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            Gold dates contain active-recall work. Drill from a year into a month, then open any date to see the questions and recorded times.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-full border border-amber-400/15 bg-amber-400/[0.045] px-3 py-1.5 text-xs text-amber-200/75">
+          <span className="size-2 rounded-full bg-[#d4a72c] shadow-[0_0_12px_rgba(212,167,44,0.45)]" />
+          {activeDateSet.size} active day{activeDateSet.size === 1 ? "" : "s"}
+        </div>
+      </div>
+
+      <section className="mt-8 overflow-hidden rounded-3xl border border-slate-800 bg-[#0f172a] shadow-[0_28px_90px_rgba(0,0,0,0.24)]">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label={`Previous ${view}`}
+              onClick={() => navigate(-1)}
+              className="grid size-9 place-items-center rounded-xl border border-slate-800 bg-slate-950/60 text-slate-500 transition hover:border-amber-400/25 hover:text-amber-300"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnchorDate(getLocalDateKey())}
+              className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-400 transition hover:border-amber-400/25 hover:text-amber-300"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              aria-label={`Next ${view}`}
+              onClick={() => navigate(1)}
+              className="grid size-9 place-items-center rounded-xl border border-slate-800 bg-slate-950/60 text-slate-500 transition hover:border-amber-400/25 hover:text-amber-300"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+            <h3 className="ml-2 text-sm font-semibold text-slate-200 sm:text-base">{headerTitle}</h3>
+          </div>
+          <div className="flex rounded-xl border border-slate-800 bg-slate-950/60 p-1" aria-label="Calendar view">
+            {(["day", "week", "month", "year"] as const).map((calendarView) => (
+              <button
+                key={calendarView}
+                type="button"
+                data-calendar-mode-button={calendarView}
+                aria-pressed={view === calendarView}
+                onClick={() => setView(calendarView)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold capitalize transition ${
+                  view === calendarView
+                    ? "bg-amber-300 text-slate-950 shadow-[0_5px_18px_rgba(212,167,44,0.18)]"
+                    : "text-slate-600 hover:text-slate-300"
+                }`}
+              >
+                {calendarView}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {view === "day" && (
+          <div className="p-4 sm:p-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-400">
+                {dayEvents.length
+                  ? `${dayEvents.length} recorded review${dayEvents.length === 1 ? "" : "s"}`
+                  : activeDateSet.has(anchorDate)
+                    ? "Historical recall activity is recorded for this day."
+                    : "No active recall was recorded on this day."}
+              </p>
+              <span className="text-xs text-slate-600">Times use your laptop’s local clock</span>
+            </div>
+            <div className="max-h-[650px] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/35">
+              {Array.from({ length: 24 }, (_, hour) => {
+                const hourEvents = exactDayEvents.filter((event) => new Date(event.reviewedAt).getHours() === hour);
+                return (
+                  <div
+                    key={hour}
+                    data-calendar-hour={hour}
+                    className="grid min-h-16 grid-cols-[72px_1fr] border-b border-slate-800/70 last:border-b-0"
+                  >
+                    <div className="border-r border-slate-800/70 px-3 py-3 text-right text-[11px] font-medium text-slate-600">
+                      {String(hour).padStart(2, "0")}:00
+                    </div>
+                    <div className="space-y-2 p-2.5">
+                      {hourEvents.map((event) => (
+                        <article
+                          key={event.id}
+                          data-calendar-event={event.id}
+                          className="rounded-xl border border-amber-400/15 bg-amber-400/[0.045] px-3.5 py-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                            <span className="font-semibold text-amber-300">
+                              {new Intl.DateTimeFormat("en-ZA", { hour: "2-digit", minute: "2-digit" }).format(new Date(event.reviewedAt))}
+                            </span>
+                            <span className="rounded-full border border-slate-700 px-2 py-0.5 font-semibold text-slate-400">{event.course}</span>
+                            <span className="text-slate-600">{event.chapter} / {event.subchapter}</span>
+                            <span className="ml-auto font-semibold text-slate-500">Level {event.level}</span>
+                          </div>
+                          <p className="rich-question mt-2 line-clamp-2 text-sm leading-6 text-slate-200">{event.question}</p>
+                          <p className="mt-1 text-[10px] text-slate-600">Next review: {formatDate(event.nextReviewDate)}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {legacyDayEvents.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Time not recorded</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  These reviews came from an older Recall OS version that stored the date but not the exact hour.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {legacyDayEvents.map((event) => (
+                    <div key={event.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2.5 text-xs">
+                      <span className="font-semibold text-slate-400">{event.course}</span>
+                      <span className="text-slate-600">{event.chapter} / {event.subchapter}</span>
+                      <span className="min-w-0 flex-1 truncate text-slate-300">{event.question}</span>
+                      <span className="text-slate-600">Level {event.level}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === "week" && (
+          <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6 xl:grid-cols-7">
+            {weekDates.map((dateKey) => {
+              const active = activeDateSet.has(dateKey);
+              const date = dateFromKey(dateKey);
+              const count = eventCountByDate.get(dateKey) ?? 0;
+              return (
+                <button
+                  key={dateKey}
+                  type="button"
+                  aria-label={`Open ${new Intl.DateTimeFormat("en-ZA", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(date)}`}
+                  data-calendar-date={dateKey}
+                  data-recall-active-date={active ? dateKey : undefined}
+                  onClick={() => openDay(dateKey)}
+                  className={`min-h-40 rounded-2xl border p-4 text-left transition ${
+                    active
+                      ? "border-amber-400/30 bg-amber-400/[0.07] shadow-[0_12px_35px_rgba(212,167,44,0.08)]"
+                      : "border-slate-800 bg-slate-950/40 hover:border-slate-700"
+                  }`}
+                >
+                  <span className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${active ? "text-amber-300" : "text-slate-600"}`}>
+                    {new Intl.DateTimeFormat("en-ZA", { weekday: "short" }).format(date)}
+                  </span>
+                  <span className={`mt-2 block text-2xl font-semibold ${active ? "text-amber-100" : "text-slate-300"}`}>{date.getDate()}</span>
+                  {active && <span className="mt-4 block size-2 rounded-full bg-[#d4a72c] shadow-[0_0_14px_rgba(212,167,44,0.55)]" />}
+                  <span className="mt-3 block text-[11px] leading-5 text-slate-600">
+                    {count ? `${count} recorded review${count === 1 ? "" : "s"}` : active ? "Activity recorded" : "No activity"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {view === "month" && (
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-7">
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                <div key={day} className="px-2 pb-3 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">{day}</div>
+              ))}
+              {monthDates.map((dateKey) => {
+                const date = dateFromKey(dateKey);
+                const inMonth = date.getMonth() === month;
+                const active = activeDateSet.has(dateKey);
+                const count = eventCountByDate.get(dateKey) ?? 0;
+                return (
+                  <button
+                    key={dateKey}
+                    type="button"
+                    aria-label={`Open ${new Intl.DateTimeFormat("en-ZA", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(date)}`}
+                    data-calendar-date={dateKey}
+                    data-recall-active-date={active ? dateKey : undefined}
+                    onClick={() => openDay(dateKey)}
+                    className={`group relative min-h-24 border-b border-r border-slate-800/70 p-2 text-left transition first:border-l ${
+                      inMonth ? "bg-slate-950/25" : "bg-slate-950/55"
+                    } ${active ? "bg-amber-400/[0.065] hover:bg-amber-400/[0.1]" : "hover:bg-slate-900/70"}`}
+                  >
+                    <span className={`grid size-7 place-items-center rounded-full text-xs font-semibold ${
+                      active
+                        ? "bg-[#d4a72c] text-[#16110f] shadow-[0_0_16px_rgba(212,167,44,0.25)]"
+                        : inMonth
+                          ? "text-slate-400"
+                          : "text-slate-700"
+                    }`}>{date.getDate()}</span>
+                    {active && (
+                      <span className="mt-3 block text-[10px] font-medium text-amber-300/75">
+                        {count ? `${count} review${count === 1 ? "" : "s"}` : "Active"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {view === "year" && (
+          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:grid-cols-3">
+            {Array.from({ length: 12 }, (_, targetMonth) => {
+              const dates = monthGridDateKeys(year, targetMonth);
+              const activeDays = dates.filter(
+                (dateKey) =>
+                  dateFromKey(dateKey).getMonth() === targetMonth && activeDateSet.has(dateKey),
+              ).length;
+              return (
+                <button
+                  key={targetMonth}
+                  type="button"
+                  data-calendar-month={targetMonth + 1}
+                  onClick={() => openMonth(year, targetMonth)}
+                  className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-left transition hover:border-amber-400/25 hover:bg-slate-950/65"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-300">
+                      {new Intl.DateTimeFormat("en-ZA", { month: "long" }).format(new Date(year, targetMonth, 1))}
+                    </span>
+                    <span className={`text-[10px] font-semibold ${activeDays ? "text-amber-300" : "text-slate-700"}`}>
+                      {activeDays} active
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-7 gap-1">
+                    {dates.map((dateKey) => {
+                      const inMonth = dateFromKey(dateKey).getMonth() === targetMonth;
+                      const active = inMonth && activeDateSet.has(dateKey);
+                      return (
+                        <span
+                          key={dateKey}
+                          className={`aspect-square rounded-[3px] ${
+                            active
+                              ? "bg-[#d4a72c] shadow-[0_0_8px_rgba(212,167,44,0.28)]"
+                              : inMonth
+                                ? "bg-slate-800"
+                                : "bg-transparent"
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <p className="mt-4 text-xs leading-5 text-slate-600">
+        Recall OS started saving exact timestamps in version 1.4. Older attempts still appear on the correct gold date, with “Time not recorded” where the hour was not available.
+      </p>
     </div>
   );
 }
@@ -2782,6 +3337,8 @@ interface SettingsPageProps {
   setCourses: Dispatch<SetStateAction<CourseCode[]>>;
   activityDates: string[];
   setActivityDates: Dispatch<SetStateAction<string[]>>;
+  theme: ThemeId;
+  setTheme: Dispatch<SetStateAction<ThemeId>>;
 }
 
 function SettingsPage({
@@ -2791,6 +3348,8 @@ function SettingsPage({
   setCourses,
   activityDates,
   setActivityDates,
+  theme,
+  setTheme,
 }: SettingsPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [courseName, setCourseName] = useState("");
@@ -2821,11 +3380,12 @@ function SettingsPage({
 
   function exportData() {
     const backup = {
-      version: 4,
+      version: 5,
       exportedAt: new Date().toISOString(),
       courses,
       questions,
       activityDates,
+      theme,
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json",
@@ -2848,7 +3408,7 @@ function SettingsPage({
       const parsedValue: unknown = JSON.parse(await file.text());
       const envelope =
         parsedValue && typeof parsedValue === "object" && !Array.isArray(parsedValue)
-          ? (parsedValue as { questions?: unknown; courses?: unknown; activityDates?: unknown })
+          ? (parsedValue as { questions?: unknown; courses?: unknown; activityDates?: unknown; theme?: unknown })
           : null;
       const rawQuestions = Array.isArray(parsedValue)
         ? parsedValue
@@ -2876,6 +3436,9 @@ function SettingsPage({
         ...(Array.isArray(envelope?.courses) ? envelope.courses : []),
         ...importedQuestions.map((question) => question.course),
       ]);
+      const importedTheme = THEMES.some((availableTheme) => availableTheme.id === envelope?.theme)
+        ? (envelope?.theme as ThemeId)
+        : null;
 
       if (importMode === "replace") {
         setQuestions(importedQuestions);
@@ -2896,6 +3459,7 @@ function SettingsPage({
           Array.from(new Set([...currentDates, ...importedActivityDates])).sort(),
         );
       }
+      if (importedTheme) setTheme(importedTheme);
 
       setImportStatus({
         kind: "success",
@@ -2961,6 +3525,66 @@ function SettingsPage({
             </span>
           </div>
         </article>
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-[#0f172a] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-xl border border-amber-400/15 bg-amber-400/[0.06] text-amber-300">
+              <Palette className="size-5" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Appearance themes</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Midnight Slate stays selected unless you deliberately choose another theme.
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1.5 text-xs font-semibold text-slate-500">
+            {THEMES.find((availableTheme) => availableTheme.id === theme)?.name}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Choose app theme">
+          {THEMES.map((availableTheme) => {
+            const active = availableTheme.id === theme;
+            return (
+              <button
+                key={availableTheme.id}
+                type="button"
+                data-theme-option={availableTheme.id}
+                aria-pressed={active}
+                onClick={() => setTheme(availableTheme.id)}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  active
+                    ? "border-cyan-400/35 bg-cyan-400/[0.07] shadow-[0_12px_32px_rgba(34,211,238,0.07)]"
+                    : "border-slate-800 bg-slate-950/45 hover:border-slate-700"
+                }`}
+              >
+                <span className="flex items-start justify-between gap-3">
+                  <span>
+                    <span className={`block text-sm font-semibold ${active ? "text-cyan-200" : "text-slate-300"}`}>
+                      {availableTheme.name}
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-5 text-slate-600">
+                      {availableTheme.description}
+                    </span>
+                  </span>
+                  {active && <CheckCircle2 className="size-4 shrink-0 text-cyan-300" />}
+                </span>
+                <span className="mt-4 flex gap-2 rounded-xl border border-white/5 bg-black/15 p-2">
+                  {availableTheme.colors.map((color) => (
+                    <span
+                      key={color}
+                      className="h-5 flex-1 rounded-md border border-white/10"
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <section className="mt-6 rounded-3xl border border-slate-800 bg-[#0f172a] p-6">
@@ -3133,6 +3757,7 @@ export default function App() {
   const [questions, setQuestions] = useStoredQuestions();
   const [courses, setCourses] = useStoredCourses(questions);
   const [activityDates, setActivityDates] = useStoredActivityDates(questions);
+  const [theme, setTheme] = useStoredTheme();
   const [activeView, setActiveView] = useState<NavigationId>("practice");
   const [activeCourse, setActiveCourse] = useState<CourseCode>(() => courses[0] ?? "");
 
@@ -3143,7 +3768,10 @@ export default function App() {
   }, [activeCourse, courses]);
 
   return (
-    <div className="min-h-screen bg-[#090d16] font-sans text-slate-200 antialiased selection:bg-cyan-300/25 selection:text-cyan-100">
+    <div
+      data-theme={theme}
+      className="app-theme min-h-screen bg-[#090d16] font-sans text-slate-200 antialiased selection:bg-cyan-300/25 selection:text-cyan-100"
+    >
       <div className="flex min-h-screen min-w-[1024px]">
         <Sidebar activeView={activeView} onNavigate={setActiveView} />
 
@@ -3173,6 +3801,9 @@ export default function App() {
               onManageCourses={() => setActiveView("settings")}
             />
           )}
+          {activeView === "calendar" && (
+            <RecallCalendar questions={questions} activityDates={activityDates} />
+          )}
           {activeView === "analytics" && (
             <AnalyticsDashboard questions={questions} courses={courses} />
           )}
@@ -3184,6 +3815,8 @@ export default function App() {
               setCourses={setCourses}
               activityDates={activityDates}
               setActivityDates={setActivityDates}
+              theme={theme}
+              setTheme={setTheme}
             />
           )}
         </main>

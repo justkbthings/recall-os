@@ -12,6 +12,158 @@ body {
   background: #090d16;
 }
 
+.app-theme {
+  --theme-bg: #090d16;
+  --theme-sidebar: #0b101a;
+  --theme-surface: #0f172a;
+  --theme-surface-alt: #111b2e;
+  --theme-border: #1e293b;
+  --theme-border-strong: #334155;
+  --theme-accent: #22d3ee;
+  --theme-accent-soft: rgb(34 211 238 / 0.1);
+  --theme-glow: rgb(34 211 238 / 0.12);
+  --theme-radial: rgb(30 41 59 / 0.2);
+  background: var(--theme-bg) !important;
+  transition: background-color 180ms ease;
+}
+
+.app-theme[data-theme="dark-note"] {
+  --theme-bg: #181a1b;
+  --theme-sidebar: #151718;
+  --theme-surface: #202425;
+  --theme-surface-alt: #272c2d;
+  --theme-border: #343b3d;
+  --theme-border-strong: #4b575a;
+  --theme-accent: #d5a85a;
+  --theme-accent-soft: rgb(213 168 90 / 0.12);
+  --theme-glow: rgb(213 168 90 / 0.13);
+  --theme-radial: rgb(76 94 99 / 0.16);
+}
+
+.app-theme[data-theme="ember"] {
+  --theme-bg: #16110f;
+  --theme-sidebar: #120e0d;
+  --theme-surface: #211815;
+  --theme-surface-alt: #2a1e1a;
+  --theme-border: #44302a;
+  --theme-border-strong: #65483d;
+  --theme-accent: #f2a65a;
+  --theme-accent-soft: rgb(242 166 90 / 0.12);
+  --theme-glow: rgb(242 166 90 / 0.13);
+  --theme-radial: rgb(100 63 45 / 0.18);
+}
+
+.app-theme[data-theme="nordic"] {
+  --theme-bg: #243044;
+  --theme-sidebar: #202b3d;
+  --theme-surface: #31415b;
+  --theme-surface-alt: #354861;
+  --theme-border: #4b607b;
+  --theme-border-strong: #647b98;
+  --theme-accent: #ff9b50;
+  --theme-accent-soft: rgb(255 155 80 / 0.13);
+  --theme-glow: rgb(255 155 80 / 0.14);
+  --theme-radial: rgb(94 126 165 / 0.18);
+}
+
+.app-theme[data-theme="lavender"] {
+  --theme-bg: #11101c;
+  --theme-sidebar: #0e0d18;
+  --theme-surface: #1c1930;
+  --theme-surface-alt: #25203d;
+  --theme-border: #393354;
+  --theme-border-strong: #554c78;
+  --theme-accent: #b8a5ff;
+  --theme-accent-soft: rgb(184 165 255 / 0.12);
+  --theme-glow: rgb(184 165 255 / 0.13);
+  --theme-radial: rgb(94 75 145 / 0.18);
+}
+
+.app-theme[data-theme="forest"] {
+  --theme-bg: #0c1512;
+  --theme-sidebar: #09110e;
+  --theme-surface: #13221d;
+  --theme-surface-alt: #192c26;
+  --theme-border: #294239;
+  --theme-border-strong: #3f5d52;
+  --theme-accent: #70d6a8;
+  --theme-accent-soft: rgb(112 214 168 / 0.11);
+  --theme-glow: rgb(112 214 168 / 0.12);
+  --theme-radial: rgb(47 104 79 / 0.17);
+}
+
+.app-theme[data-theme="rosewood"] {
+  --theme-bg: #190f15;
+  --theme-sidebar: #140c11;
+  --theme-surface: #281720;
+  --theme-surface-alt: #321d28;
+  --theme-border: #4a2b38;
+  --theme-border-strong: #684052;
+  --theme-accent: #f08da9;
+  --theme-accent-soft: rgb(240 141 169 / 0.11);
+  --theme-glow: rgb(240 141 169 / 0.13);
+  --theme-radial: rgb(115 55 78 / 0.18);
+}
+
+.app-theme main {
+  background-color: var(--theme-bg);
+  background-image: radial-gradient(circle at top right, var(--theme-radial), transparent 32%) !important;
+}
+
+.app-theme [class~="bg-[#0b101a]"] {
+  background-color: var(--theme-sidebar) !important;
+}
+
+.app-theme [class~="bg-[#0f172a]"],
+.app-theme [class*="bg-slate-950"] {
+  background-color: var(--theme-surface) !important;
+}
+
+.app-theme [class*="bg-slate-900"],
+.app-theme [class*="bg-slate-800"] {
+  background-color: var(--theme-surface-alt) !important;
+}
+
+.app-theme [class*="fixed"][class*="inset-0"][class*="bg-slate-950"] {
+  background-color: color-mix(in srgb, var(--theme-bg) 82%, transparent) !important;
+}
+
+.app-theme [class*="border-slate-800"] {
+  border-color: var(--theme-border) !important;
+}
+
+.app-theme [class*="border-slate-700"],
+.app-theme [class*="border-slate-600"] {
+  border-color: var(--theme-border-strong) !important;
+}
+
+.app-theme [class*="text-cyan-"] {
+  color: var(--theme-accent) !important;
+}
+
+.app-theme [class*="border-cyan-"] {
+  border-color: color-mix(in srgb, var(--theme-accent) 34%, transparent) !important;
+}
+
+.app-theme [class*="bg-cyan-400/"],
+.app-theme [class*="bg-cyan-300/"] {
+  background-color: var(--theme-accent-soft) !important;
+}
+
+.app-theme [class~="bg-cyan-300"],
+.app-theme [class~="bg-cyan-400"] {
+  background-color: var(--theme-accent) !important;
+}
+
+.app-theme [class~="hover:bg-cyan-200"]:hover,
+.app-theme [class~="hover:bg-cyan-300"]:hover {
+  background-color: color-mix(in srgb, var(--theme-accent) 86%, white) !important;
+}
+
+.app-theme ::selection {
+  background: var(--theme-accent-soft);
+}
+
 button,
 input,
 select,
