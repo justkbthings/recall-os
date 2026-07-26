@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 — 2026-07-26
+
+- Added an optional rich note to every question for supporting context that remains separate from the answer.
+- Migrated existing questions with an empty note field without changing prompts, answers, schedules, attempts, or review history.
+- Added a dedicated Recall Calendar with day, week, month, and year views.
+- Highlighted recall activity dates in gold and added Year → Month → Day drill-down navigation.
+- Added a 24-hour day timeline showing the exact question, course, rating, review time, and next review date.
+- Preserved older date-only attempts and labels them as “Time not recorded” instead of inventing an hour.
+- Added seven locally stored appearance themes while keeping Midnight Slate as the unchanged default.
+- Included theme choice and optional notes in portable backups and recovery migrations.
+- Expanded desktop verification for note editors, calendar navigation, hourly history, theme availability, and default-theme preservation.
+
 ## 1.4.0 — 2026-07-24
 
 - Added fixed-style rich document editors for questions and answers.

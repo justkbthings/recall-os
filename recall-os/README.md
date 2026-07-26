@@ -3,7 +3,8 @@
 Recall OS is a private, local-first desktop application for active recall and
 spaced repetition. It provides daily due-question sessions, five-level review
 scheduling, question and course management, forgetting-curve analytics, dated
-study history, and JSON backup/import.
+study history, an interactive recall calendar, optional supporting notes,
+selectable themes, and JSON backup/import.
 
 ## Daily Practice and memory tracking
 
@@ -17,21 +18,35 @@ study history, and JSON backup/import.
 - Inspect an estimated per-question retention line graph in Analytics. Each
   timestamped review resets the curve and the selected rating controls the next
   decay interval.
+- Open Recall Calendar in day, week, month, or year mode. Gold dates mark active
+  recall, year cards drill into months, and date cells open a 24-hour timeline.
+- Newer reviews show their exact local time and question. Older date-only
+  history remains on the correct date and is marked “Time not recorded.”
 
 ## Rich question and answer documents
 
 - Questions use a fixed Nirmala UI typeface.
 - Answers retain their fixed document style; there is no font selector.
-- Both editors support bold, italic, underline, bullets, numbered lists, and
-  indentation.
+- Every question can include an optional rich note for explanation, context, or
+  memory cues. It appears separately from the answer.
+- Question, answer, and note editors support bold, italic, underline, bullets,
+  numbered lists, and indentation.
 - LaTeX equations are rendered locally with KaTeX.
 - Uploaded or pasted pictures are compressed, embedded with the question, and
   included in JSON backups.
 - Stored rich text is sanitised before display.
 
 Review-history timestamps were introduced in version 1.3.0. Rich documents were
-introduced in version 1.4.0. Existing questions and attempt counts are preserved
-during migration.
+introduced in version 1.4.0. Optional notes and the recall calendar were
+introduced in version 1.5.0. Existing questions, dates, schedules, review
+history, and attempt counts are preserved during migration.
+
+## Appearance
+
+Midnight Slate remains the default Recall OS design. Settings includes six
+additional opt-in dark themes—Dark Note, Ember Study, Nordic Focus, Lavender
+Night, Forest Recall, and Rosewood. Theme selection is stored locally and
+included in JSON backups.
 
 ## Ownership
 
