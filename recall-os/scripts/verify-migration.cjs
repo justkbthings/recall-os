@@ -16,6 +16,15 @@ const debugPort = 9341
 
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
+async function waitForRuntimeValue(evaluate, expression, errorMessage) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const result = await evaluate(expression)
+    if (result.result.value) return result.result.value
+    await delay(100)
+  }
+  throw new Error(errorMessage)
+}
+
 async function findPage() {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     try {
@@ -130,11 +139,17 @@ async function main() {
         subchapter: target.subchapter,
       };
     })()`)
-    await delay(300)
-
     const practiceTarget = practiceTargetResult.result.value
     let practiceResult = { available: false }
     if (practiceTarget.available) {
+      await waitForRuntimeValue(
+        evaluate,
+        `(() => {
+          const chapterSelect = document.querySelector('[aria-label="Choose practice chapter"]');
+          return Boolean(chapterSelect && [...chapterSelect.options].some((option) => option.value === ${JSON.stringify(practiceTarget.chapter)}));
+        })()`,
+        'The selected course did not expose the expected chapter in time.',
+      )
       const modeResult = await evaluate(`(() => {
         const modes = [...document.querySelectorAll('[data-practice-mode]')];
         const challengeButton = document.querySelector('[data-practice-mode="challenge"]');
@@ -156,7 +171,14 @@ async function main() {
         };
       })()`)
       await evaluate(`document.querySelector('[data-practice-mode="scheduled"]')?.click()`)
-      await delay(250)
+      await waitForRuntimeValue(
+        evaluate,
+        `(() => {
+          const chapterSelect = document.querySelector('[aria-label="Choose practice chapter"]');
+          return Boolean(chapterSelect && [...chapterSelect.options].some((option) => option.value === ${JSON.stringify(practiceTarget.chapter)}));
+        })()`,
+        'Scheduled practice did not restore the chapter selector in time.',
+      )
       await evaluate(`(() => {
         const chapterSelect = document.querySelector('[aria-label="Choose practice chapter"]');
         const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
@@ -164,7 +186,14 @@ async function main() {
         chapterSelect.dispatchEvent(new Event('input', { bubbles: true }));
         chapterSelect.dispatchEvent(new Event('change', { bubbles: true }));
       })()`)
-      await delay(250)
+      await waitForRuntimeValue(
+        evaluate,
+        `(() => {
+          const subchapterSelect = document.querySelector('[aria-label="Choose practice subchapter"]');
+          return Boolean(subchapterSelect && [...subchapterSelect.options].some((option) => option.value === ${JSON.stringify(practiceTarget.subchapter)}));
+        })()`,
+        'The selected chapter did not expose the expected subchapter in time.',
+      )
       await evaluate(`(() => {
         const subchapterSelect = document.querySelector('[aria-label="Choose practice subchapter"]');
         const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
@@ -172,7 +201,14 @@ async function main() {
         subchapterSelect.dispatchEvent(new Event('input', { bubbles: true }));
         subchapterSelect.dispatchEvent(new Event('change', { bubbles: true }));
       })()`)
-      await delay(300)
+      await waitForRuntimeValue(
+        evaluate,
+        `(() => Boolean(
+          document.querySelector('[data-scope-progress="chapter"]') &&
+          document.querySelector('[data-scope-progress="subchapter"]')
+        ))()`,
+        'The chapter and subchapter progress cards did not render in time.',
+      )
       const scopeResult = await evaluate(`(() => {
         const questions = JSON.parse(localStorage.getItem('active-recall.questions.v1') || '[]');
         const now = new Date();
@@ -383,18 +419,39 @@ async function main() {
       button?.click();
     })()`)
     await delay(300)
-    const courseManagerResult = await evaluate(`(() => ({
-      visible: document.body.innerText.includes('Course manager'),
-      addButtonVisible: [...document.querySelectorAll('button')].some((item) => item.textContent.trim() === 'Add course'),
-      ownershipVisible: document.body.innerText.includes('Karabo Goodwill Nkambule'),
-      versionVisible: document.body.innerText.includes('Version ${appVersion}'),
-      themeOptionCount: document.querySelectorAll('[data-theme-option]').length,
-      currentThemeStillSelected: document.querySelector('[data-theme-option="midnight"]')?.getAttribute('aria-pressed') === 'true',
-    }))()`)
+    const courseManagerResult = await evaluate(`(() => {
+      const root = document.querySelector('[data-theme]');
+      const originalTheme = root?.getAttribute('data-theme') || 'midnight';
+      if (root) root.setAttribute('data-theme', 'daylight');
+      const daylightStyles = {
+        themeBackground: root ? getComputedStyle(root).getPropertyValue('--theme-bg').trim() : null,
+        mainBackground: getComputedStyle(document.querySelector('main')).backgroundColor,
+        headingColor: getComputedStyle(document.querySelector('main h2')).color,
+        sidebarBackground: getComputedStyle(document.querySelector('aside')).backgroundColor,
+        colorScheme: getComputedStyle(document.documentElement).colorScheme,
+      };
+      if (root) root.setAttribute('data-theme', originalTheme);
+      return {
+        visible: document.body.innerText.includes('Course manager'),
+        addButtonVisible: [...document.querySelectorAll('button')].some((item) => item.textContent.trim() === 'Add course'),
+        ownershipVisible: document.body.innerText.includes('Karabo Goodwill Nkambule'),
+        versionVisible: document.body.innerText.includes('Version ${appVersion}'),
+        themeOptionCount: document.querySelectorAll('[data-theme-option]').length,
+        selectedTheme: document.querySelector('[data-theme-option][aria-pressed="true"]')?.getAttribute('data-theme-option') || null,
+        daylightAvailable: Boolean(document.querySelector('[data-theme-option="daylight"]')),
+        daylightStyles,
+      };
+    })()`)
     if (
-      courseManagerResult.result.value.themeOptionCount !== 7 ||
-      !courseManagerResult.result.value.currentThemeStillSelected ||
-      storageResult.result.value.renderedTheme !== 'midnight'
+      courseManagerResult.result.value.themeOptionCount !== 8 ||
+      !courseManagerResult.result.value.daylightAvailable ||
+      courseManagerResult.result.value.selectedTheme !== storageResult.result.value.storedTheme ||
+      storageResult.result.value.renderedTheme !== storageResult.result.value.storedTheme ||
+      courseManagerResult.result.value.daylightStyles.themeBackground !== '#f8fafc' ||
+      courseManagerResult.result.value.daylightStyles.mainBackground !== 'rgb(248, 250, 252)' ||
+      courseManagerResult.result.value.daylightStyles.headingColor !== 'rgb(15, 23, 42)' ||
+      courseManagerResult.result.value.daylightStyles.sidebarBackground !== 'rgb(255, 255, 255)' ||
+      courseManagerResult.result.value.daylightStyles.colorScheme !== 'light'
     ) {
       throw new Error(`Theme verification failed: ${JSON.stringify(courseManagerResult.result.value)}`)
     }
