@@ -20,11 +20,27 @@ body {
   --theme-border: #1e293b;
   --theme-border-strong: #334155;
   --theme-accent: #22d3ee;
+  --theme-accent-solid: #22d3ee;
   --theme-accent-soft: rgb(34 211 238 / 0.1);
   --theme-glow: rgb(34 211 238 / 0.12);
   --theme-radial: rgb(30 41 59 / 0.2);
   background: var(--theme-bg) !important;
   transition: background-color 180ms ease;
+}
+
+.app-theme[data-theme="daylight"] {
+  --theme-bg: #f8fafc;
+  --theme-sidebar: #ffffff;
+  --theme-surface: #ffffff;
+  --theme-surface-alt: #eef2f7;
+  --theme-border: #d6dee8;
+  --theme-border-strong: #b8c4d3;
+  --theme-accent: #0369a1;
+  --theme-accent-solid: #38bdf8;
+  --theme-accent-soft: rgb(3 105 161 / 0.1);
+  --theme-glow: rgb(3 105 161 / 0.12);
+  --theme-radial: rgb(14 165 233 / 0.09);
+  color: #1e293b;
 }
 
 .app-theme[data-theme="dark-note"] {
@@ -152,7 +168,7 @@ body {
 
 .app-theme [class~="bg-cyan-300"],
 .app-theme [class~="bg-cyan-400"] {
-  background-color: var(--theme-accent) !important;
+  background-color: var(--theme-accent-solid) !important;
 }
 
 .app-theme [class~="hover:bg-cyan-200"]:hover,
@@ -162,6 +178,83 @@ body {
 
 .app-theme ::selection {
   background: var(--theme-accent-soft);
+}
+
+html:has(.app-theme[data-theme="daylight"]),
+body:has(.app-theme[data-theme="daylight"]) {
+  background: #f8fafc;
+  color-scheme: light;
+}
+
+.app-theme[data-theme="daylight"] [class~="text-slate-50"],
+.app-theme[data-theme="daylight"] [class~="text-slate-100"],
+.app-theme[data-theme="daylight"] [class~="text-slate-200"] {
+  color: #0f172a !important;
+}
+
+.app-theme[data-theme="daylight"] [class~="text-slate-300"] {
+  color: #1e293b !important;
+}
+
+.app-theme[data-theme="daylight"] [class~="text-slate-400"] {
+  color: #334155 !important;
+}
+
+.app-theme[data-theme="daylight"] [class~="text-slate-500"] {
+  color: #475569 !important;
+}
+
+.app-theme[data-theme="daylight"] [class~="text-slate-600"],
+.app-theme[data-theme="daylight"] [class~="text-slate-700"] {
+  color: #64748b !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="text-amber-"] {
+  color: #92400e !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="text-emerald-"] {
+  color: #047857 !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="text-violet-"] {
+  color: #6d28d9 !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="text-rose-"] {
+  color: #be123c !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="text-orange-"] {
+  color: #c2410c !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="border-white"] {
+  border-color: #cbd5e1 !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="bg-white/"] {
+  background-color: #ffffff !important;
+}
+
+.app-theme[data-theme="daylight"] [class*="fixed"][class*="inset-0"][class*="bg-slate-950"] {
+  background-color: rgb(15 23 42 / 0.72) !important;
+}
+
+.app-theme[data-theme="daylight"] .rich-content blockquote {
+  border-left-color: #94a3b8;
+  color: #475569;
+}
+
+.app-theme[data-theme="daylight"] .rich-content img {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.app-theme[data-theme="daylight"] .rich-editor [data-equation] {
+  background: rgb(14 165 233 / 0.08);
+  border-color: rgb(3 105 161 / 0.35);
+  color: #075985;
 }
 
 button,

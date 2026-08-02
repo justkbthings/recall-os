@@ -60,6 +60,7 @@ type NavigationId = "practice" | "questions" | "calendar" | "analytics" | "setti
 type RecallLevel = 1 | 2 | 3 | 4 | 5;
 type ThemeId =
   | "midnight"
+  | "daylight"
   | "dark-note"
   | "ember"
   | "nordic"
@@ -94,7 +95,7 @@ const STORAGE_KEY = "active-recall.questions.v1";
 const ACTIVITY_STORAGE_KEY = "active-recall.activity-dates.v1";
 const COURSES_STORAGE_KEY = "active-recall.courses.v1";
 const THEME_STORAGE_KEY = "active-recall.theme.v1";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const COPYRIGHT_OWNER = "Karabo Goodwill Nkambule";
 const LEGACY_DEFAULT_COURSES: CourseCode[] = ["CSC3003S", "INF3012S", "AST1000S"];
 const REVIEW_LEVELS = [
@@ -116,6 +117,12 @@ const THEMES: Array<{
     name: "Midnight Slate",
     description: "Your original Recall OS theme",
     colors: ["#090d16", "#0f172a", "#1e293b", "#22d3ee"],
+  },
+  {
+    id: "daylight",
+    name: "Daylight",
+    description: "Maximum contrast at low screen brightness",
+    colors: ["#f8fafc", "#ffffff", "#d6dee8", "#0369a1"],
   },
   {
     id: "dark-note",
@@ -3536,7 +3543,7 @@ function SettingsPage({
             <div>
               <h3 className="text-sm font-semibold text-slate-200">Appearance themes</h3>
               <p className="mt-1 text-xs text-slate-600">
-                Midnight Slate stays selected unless you deliberately choose another theme.
+                Your current theme stays selected unless you deliberately choose another one.
               </p>
             </div>
           </div>
