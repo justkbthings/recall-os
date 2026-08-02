@@ -38,15 +38,18 @@ selectable themes, and JSON backup/import.
 
 Review-history timestamps were introduced in version 1.3.0. Rich documents were
 introduced in version 1.4.0. Optional notes and the recall calendar were
-introduced in version 1.5.0. Existing questions, dates, schedules, review
-history, and attempt counts are preserved during migration.
+introduced in version 1.5.0. The high-contrast Daylight theme was introduced in
+version 1.6.0. Existing questions, dates, schedules, review history, attempt
+counts, and the currently selected theme are preserved during migration.
 
 ## Appearance
 
-Midnight Slate remains the default Recall OS design. Settings includes six
-additional opt-in dark themes—Dark Note, Ember Study, Nordic Focus, Lavender
-Night, Forest Recall, and Rosewood. Theme selection is stored locally and
-included in JSON backups.
+Midnight Slate remains the default Recall OS design. Settings includes the
+high-contrast Daylight theme for clear reading at low screen brightness, plus
+six opt-in dark themes—Dark Note, Ember Study, Nordic Focus, Lavender Night,
+Forest Recall, and Rosewood. Every alternative is optional: upgrades preserve
+the theme already selected on the device. Theme selection is stored locally
+and included in JSON backups.
 
 ## Ownership
 

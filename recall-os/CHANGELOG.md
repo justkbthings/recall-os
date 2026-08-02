@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.0 — 2026-08-02
+
+- Added the optional Daylight theme for maximum readability when the laptop screen is set to low brightness.
+- Introduced near-white pages, white surfaces, dark navy text, stronger borders, and light native controls throughout Daylight mode.
+- Kept the existing theme selected during upgrades; Daylight activates only when deliberately chosen in Settings.
+- Expanded migration and desktop checks to verify all eight themes, large question libraries, and selected-theme preservation.
+
 ## 1.5.0 — 2026-07-26
 
 - Added an optional rich note to every question for supporting context that remains separate from the answer.
