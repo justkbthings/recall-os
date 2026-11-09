@@ -95,7 +95,7 @@ const STORAGE_KEY = "active-recall.questions.v1";
 const ACTIVITY_STORAGE_KEY = "active-recall.activity-dates.v1";
 const COURSES_STORAGE_KEY = "active-recall.courses.v1";
 const THEME_STORAGE_KEY = "active-recall.theme.v1";
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.1";
 const COPYRIGHT_OWNER = "Karabo Goodwill Nkambule";
 const LEGACY_DEFAULT_COURSES: CourseCode[] = ["CSC3003S", "INF3012S", "AST1000S"];
 const REVIEW_LEVELS = [
@@ -956,12 +956,12 @@ interface SidebarProps {
 
 function Sidebar({ activeView, onNavigate }: SidebarProps) {
   return (
-    <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-slate-800/90 bg-[#0b101a] px-4 py-5">
+    <aside className="app-sidebar flex h-screen w-72 shrink-0 flex-col border-r border-slate-800/90 bg-[#0b101a] px-4 py-5">
       <div className="flex items-center gap-3 px-2">
         <div className="grid size-10 place-items-center rounded-xl bg-cyan-400 text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.22)]">
           <Layers3 className="size-5" strokeWidth={2.2} />
         </div>
-        <div>
+        <div className="sidebar-brand">
           <p className="text-sm font-semibold tracking-tight text-slate-100">Recall OS</p>
           <p className="text-xs text-slate-500">Active learning workspace</p>
         </div>
@@ -969,7 +969,7 @@ function Sidebar({ activeView, onNavigate }: SidebarProps) {
 
       <div className="my-6 h-px bg-slate-800/80" />
 
-      <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+      <p className="sidebar-heading px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
         Workspace
       </p>
       <nav className="mt-2 space-y-1" aria-label="Primary navigation">
@@ -979,6 +979,8 @@ function Sidebar({ activeView, onNavigate }: SidebarProps) {
             <button
               key={id}
               type="button"
+              aria-label={label}
+              title={label}
               onClick={() => onNavigate(id)}
               className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 ${
                 active
@@ -992,14 +994,14 @@ function Sidebar({ activeView, onNavigate }: SidebarProps) {
                 }`}
                 strokeWidth={1.8}
               />
-              <span>{label}</span>
-              {active && <span className="ml-auto size-1.5 rounded-full bg-cyan-300" />}
+              <span className="sidebar-label">{label}</span>
+              {active && <span className="sidebar-active-dot ml-auto size-1.5 rounded-full bg-cyan-300" />}
             </button>
           );
         })}
       </nav>
 
-      <div className="mt-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <div className="sidebar-footer mt-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
           <CheckCircle2 className="size-4 text-emerald-400" strokeWidth={1.8} />
           Local-first storage
@@ -2154,7 +2156,7 @@ function AddQuestionModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/80 px-5 py-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 px-3 py-4 backdrop-blur-sm sm:px-5 sm:py-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="question-editor-title"
@@ -2162,7 +2164,7 @@ function AddQuestionModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-700/80 bg-[#0f172a] shadow-[0_32px_120px_rgba(0,0,0,0.6)]">
+      <div className="mx-auto w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-700/80 bg-[#0f172a] shadow-[0_32px_120px_rgba(0,0,0,0.6)]">
         <div className="flex items-start justify-between border-b border-slate-800 px-6 py-5 sm:px-7">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.17em] text-cyan-300">
@@ -3845,7 +3847,7 @@ export default function App() {
       data-theme={theme}
       className="app-theme min-h-screen bg-[#090d16] font-sans text-slate-200 antialiased selection:bg-cyan-300/25 selection:text-cyan-100"
     >
-      <div className="flex min-h-screen min-w-[1024px]">
+      <div className="flex min-h-screen min-w-0">
         <Sidebar activeView={activeView} onNavigate={setActiveView} />
 
         <main className="min-w-0 flex-1 bg-[radial-gradient(circle_at_top_right,rgba(30,41,59,0.2),transparent_32%)]">

@@ -7,7 +7,7 @@ html {
 
 body {
   margin: 0;
-  min-width: 1024px;
+  min-width: 0;
   min-height: 100vh;
   background: #090d16;
 }
@@ -358,4 +358,34 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   margin: 0.15rem;
   padding: 0.2rem 0.45rem;
+}
+
+@media (max-width: 1000px) {
+  .app-sidebar {
+    width: 4.75rem;
+    padding-inline: 0.6rem;
+  }
+
+  .app-sidebar .sidebar-brand,
+  .app-sidebar .sidebar-heading,
+  .app-sidebar .sidebar-label,
+  .app-sidebar .sidebar-active-dot,
+  .app-sidebar .sidebar-footer {
+    display: none;
+  }
+
+  .app-sidebar nav button {
+    justify-content: center;
+    padding-inline: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-theme main > header {
+    padding-inline: 1rem;
+  }
+
+  .app-theme main > div {
+    padding-inline: 1rem;
+  }
 }

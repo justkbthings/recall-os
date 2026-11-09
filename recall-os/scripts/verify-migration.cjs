@@ -333,6 +333,36 @@ async function main() {
     ) {
       throw new Error(`Rich document editor verification failed: ${JSON.stringify(modalResult.result.value)}`)
     }
+    await evaluate(`window.resizeTo(900, 720)`)
+    await delay(350)
+    const narrowWindowResult = await evaluate(`(() => {
+      const modal = document.querySelector('[role="dialog"] > div');
+      const header = document.querySelector('#question-editor-title');
+      const sidebar = document.querySelector('.app-sidebar');
+      const bounds = modal?.getBoundingClientRect();
+      return {
+        width: window.innerWidth,
+        sidebarWidth: sidebar?.getBoundingClientRect().width || 0,
+        modalFits: Boolean(bounds && bounds.left >= 0 && bounds.right <= window.innerWidth),
+        modalHeaderVisible: Boolean(header && header.getBoundingClientRect().top >= 0),
+        pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        overflowElements: [...document.querySelectorAll('body *')]
+          .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 2)
+          .slice(0, 8)
+          .map((element) => ({ tag: element.tagName, className: String(element.className).slice(0, 100), right: Math.round(element.getBoundingClientRect().right) })),
+      };
+    })()`)
+    if (
+      narrowWindowResult.result.value.width > 1000 ||
+      narrowWindowResult.result.value.sidebarWidth > 100 ||
+      !narrowWindowResult.result.value.modalFits ||
+      !narrowWindowResult.result.value.modalHeaderVisible ||
+      !narrowWindowResult.result.value.pageFits
+    ) {
+      throw new Error(`Half-screen layout verification failed: ${JSON.stringify(narrowWindowResult.result.value)}`)
+    }
+    await evaluate(`window.resizeTo(1440, 920)`)
     await evaluate(`document.querySelector('[aria-label="Close question editor"]')?.click()`)
     await delay(200)
     const attemptResult = await evaluate(`(() => {
@@ -475,6 +505,7 @@ async function main() {
           dailyPractice: practiceResult,
           editAvailable: editorResult.result.value,
           editor: modalResult.result.value,
+          halfScreen: narrowWindowResult.result.value,
           attempts: attemptResult.result.value,
           calendar: calendarResult,
           questionCurve: curveResult.result.value,
