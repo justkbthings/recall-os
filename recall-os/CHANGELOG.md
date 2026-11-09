@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0 — 2026-11-09
+
+- Added a session setup screen for Sequential or Random question order after choosing the practice scope.
+- Sequential mode follows numbered question prompts; Random mode shuffles the selected session without changing due dates or ratings.
+- Added automatic, timestamped JSON backups to Documents / Recall OS Backups whenever a nonempty library changes.
+- Preserved the existing export and import workflow and skipped automatic backup writes for an empty library.
+
 ## 1.6.0 — 2026-08-02
 
 - Added the optional Daylight theme for maximum readability when the laptop screen is set to low brightness.

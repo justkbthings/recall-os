@@ -8,6 +8,15 @@ selectable themes, and JSON backup/import.
 
 ## Daily Practice and memory tracking
 
+After choosing a course, chapter, and subchapter, choose Sequential to follow
+numbered prompts or Random to shuffle the session. This choice also applies to
+intentional retakes and the all-courses challenge.
+
+Recall OS automatically writes timestamped JSON backups of a nonempty library
+to `Documents/Recall OS Backups` as questions and progress change. The files
+can be imported through Settings using Merge data. Keep a second copy on
+another drive if you need protection against a device failure.
+
 - Select an active course, chapter, and subchapter before beginning a session.
 - Review the oldest due memory first within the selected subchapter.
 - See live chapter and subchapter mastery progress throughout the session.
