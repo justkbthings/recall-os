@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.1 — 2026-11-09
+
+- Allowed Recall OS to snap beside another window by reducing the minimum desktop width.
+- Collapsed the sidebar to labelled icon buttons at narrow widths so the main content remains readable.
+- Made the question editor start at the top of short windows and scroll normally to its action buttons.
+
 ## 1.7.0 — 2026-11-09
 
 - Added a session setup screen for Sequential or Random question order after choosing the practice scope.
