@@ -224,7 +224,8 @@ async function main() {
             question.subchapter === ${JSON.stringify(practiceTarget.subchapter)} &&
             question.nextReviewDate <= today)
           .sort((left, right) =>
-            left.nextReviewDate.localeCompare(right.nextReviewDate) ||
+            left.question.replace(/<[^>]*>/g, '').localeCompare(
+              right.question.replace(/<[^>]*>/g, ''), undefined, { numeric: true }) ||
             left.addedAt.localeCompare(right.addedAt) ||
             left.id.localeCompare(right.id));
         const toPlainText = (value) => {
@@ -252,6 +253,13 @@ async function main() {
         return result;
       })()`)
       await delay(350)
+      const orderResult = await evaluate(`(() => ({
+        orderScreenVisible: Boolean(document.querySelector('[data-testid="question-order-screen"]')),
+        sequentialAvailable: Boolean([...document.querySelectorAll('[aria-label="Choose question order"] button')].find((button) => button.textContent.includes('Sequential'))),
+        randomAvailable: Boolean([...document.querySelectorAll('[aria-label="Choose question order"] button')].find((button) => button.textContent.includes('Random'))),
+      }))()`)
+      await evaluate(`document.querySelector('[data-testid="confirm-practice-session"]')?.click()`)
+      await delay(250)
       const cardResult = await evaluate(`(() => ({
         displayedFirstQuestion: document.querySelector('[data-testid="practice-question"]')?.textContent?.replace(/\\s+/g, ' ').trim() || null,
       }))()`)
@@ -259,6 +267,7 @@ async function main() {
         ...modeResult.result.value,
         ...challengeResult.result.value,
         ...scopeResult.result.value,
+        ...orderResult.result.value,
         ...cardResult.result.value,
       }
 
@@ -272,6 +281,7 @@ async function main() {
         !practiceResult.challengeVisible ||
         !practiceResult.challengeStartEnabled ||
         !practiceResult.challengeIncludesAllQuestions ||
+        (practiceTarget.hasDueQuestion && (!practiceResult.orderScreenVisible || !practiceResult.sequentialAvailable || !practiceResult.randomAvailable)) ||
         (practiceTarget.hasDueQuestion &&
           practiceResult.displayedFirstQuestion !== practiceResult.expectedFirstQuestion)
       ) {

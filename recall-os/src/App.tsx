@@ -95,7 +95,7 @@ const STORAGE_KEY = "active-recall.questions.v1";
 const ACTIVITY_STORAGE_KEY = "active-recall.activity-dates.v1";
 const COURSES_STORAGE_KEY = "active-recall.courses.v1";
 const THEME_STORAGE_KEY = "active-recall.theme.v1";
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 const COPYRIGHT_OWNER = "Karabo Goodwill Nkambule";
 const LEGACY_DEFAULT_COURSES: CourseCode[] = ["CSC3003S", "INF3012S", "AST1000S"];
 const REVIEW_LEVELS = [
@@ -1448,6 +1448,8 @@ function DailyPractice({
   const [sessionActive, setSessionActive] = useState(false);
   const [answerVisible, setAnswerVisible] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [orderSelectionOpen, setOrderSelectionOpen] = useState(false);
+  const [sessionOrder, setSessionOrder] = useState<"sequential" | "random">("sequential");
 
   const courseQuestions = useMemo(
     () => questions.filter((question) => question.course === activeCourse),
@@ -1539,6 +1541,7 @@ function DailyPractice({
     setSessionComplete(false);
     setQueueIds([]);
     setAnswerVisible(false);
+    setOrderSelectionOpen(false);
   }, [activeCourse]);
 
   useEffect(() => {
@@ -1560,11 +1563,28 @@ function DailyPractice({
     setSessionTotal(0);
     setQueueIds([]);
     setAnswerVisible(false);
+    setOrderSelectionOpen(false);
   }, [practiceMode, selectedChapter, selectedSubchapter]);
 
-  function startSession() {
+  function startSession(order: "sequential" | "random") {
     if (!scopeSelected || sessionQuestions.length === 0) return;
-    const nextQueue = sessionQuestions.map((question) => question.id);
+    const orderedQuestions = [...sessionQuestions].sort((left, right) =>
+      left.course.localeCompare(right.course, undefined, { numeric: true }) ||
+      left.chapter.localeCompare(right.chapter, undefined, { numeric: true }) ||
+      left.subchapter.localeCompare(right.subchapter, undefined, { numeric: true }) ||
+      left.question.replace(/<[^>]*>/g, "").localeCompare(
+        right.question.replace(/<[^>]*>/g, ""), undefined, { numeric: true },
+      ) || left.addedAt.localeCompare(right.addedAt) || left.id.localeCompare(right.id),
+    );
+    if (order === "random") {
+      for (let index = orderedQuestions.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [orderedQuestions[index], orderedQuestions[swapIndex]] = [orderedQuestions[swapIndex], orderedQuestions[index]];
+      }
+    }
+    const nextQueue = orderedQuestions.map((question) => question.id);
+    setSessionOrder(order);
+    setOrderSelectionOpen(false);
     setQueueIds(nextQueue);
     setSessionTotal(nextQueue.length);
     setAnswerVisible(false);
@@ -1664,7 +1684,7 @@ function DailyPractice({
           className="pointer-events-none absolute -bottom-36 left-1/3 size-72 rounded-full bg-violet-500/[0.06] blur-3xl"
         />
 
-        {!sessionActive && !sessionComplete && (
+        {!sessionActive && !sessionComplete && !orderSelectionOpen && (
           <div className="relative mx-auto flex max-w-2xl flex-col items-center text-center">
             <div className="grid size-16 place-items-center rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.08] text-cyan-300 shadow-[0_0_40px_rgba(34,211,238,0.1)]">
               <Zap className="size-7" strokeWidth={1.7} />
@@ -1724,7 +1744,7 @@ function DailyPractice({
             </div>
             <p className="mt-3 max-w-xl text-xs leading-5 text-slate-600">
               {practiceMode === "scheduled" &&
-                "Choose a chapter and subchapter. The oldest due memory is always shown first."}
+                "Choose a chapter and subchapter, then choose sequential or random question order."}
               {practiceMode === "retake" &&
                 "Choose a chapter and subchapter to repeat every question now. Your ratings will update their next review dates."}
               {practiceMode === "challenge" &&
@@ -1825,16 +1845,47 @@ function DailyPractice({
             <button
               type="button"
               data-testid="start-practice-session"
-              onClick={startSession}
+              onClick={() => setOrderSelectionOpen(true)}
               disabled={!scopeSelected || sessionQuestions.length === 0}
               className="group mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_35px_rgba(248,250,252,0.12)] transition hover:bg-cyan-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600 disabled:shadow-none"
             >
-              {practiceMode === "scheduled" && "Start Scheduled Session"}
-              {practiceMode === "retake" && "Start Intentional Retake"}
-              {practiceMode === "challenge" && "Start All-Courses Challenge"}
+              Choose question order
               <span className="rounded-md bg-slate-950/10 px-1.5 py-0.5 text-xs">{sessionQuestions.length}</span>
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </button>
+          </div>
+        )}
+
+        {orderSelectionOpen && !sessionActive && !sessionComplete && (
+          <div className="relative mx-auto flex max-w-xl flex-col items-center py-5 text-center" data-testid="question-order-screen">
+            <div className="grid size-16 place-items-center rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.08] text-cyan-300">
+              <BookOpen className="size-7" strokeWidth={1.7} />
+            </div>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300/80">Session setup</p>
+            <h3 className="mt-3 text-2xl font-semibold tracking-tight text-slate-50 sm:text-3xl">Choose question order</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              {sessionScopeLabel} · {sessionQuestions.length} question{sessionQuestions.length === 1 ? "" : "s"}
+            </p>
+            <div className="mt-7 grid w-full gap-3 text-left sm:grid-cols-2" aria-label="Choose question order">
+              {([
+                { id: "sequential" as const, label: "Sequential", detail: "Follow the numbered question order" },
+                { id: "random" as const, label: "Random", detail: "Shuffle this session's questions" },
+              ]).map(({ id, label, detail }) => (
+                <button key={id} type="button" aria-pressed={sessionOrder === id} onClick={() => setSessionOrder(id)}
+                  className={`rounded-2xl border p-4 transition ${sessionOrder === id ? "border-cyan-400/40 bg-cyan-400/[0.08] text-cyan-100" : "border-slate-700 bg-slate-950/45 text-slate-300 hover:border-cyan-400/30"}`}>
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="mt-1 block text-xs opacity-70">{detail}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+              <button type="button" onClick={() => setOrderSelectionOpen(false)} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-medium text-slate-300 hover:bg-slate-800">Back</button>
+              <button type="button" data-testid="confirm-practice-session" onClick={() => startSession(sessionOrder)}
+                disabled={sessionQuestions.length === 0}
+                className="rounded-xl bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+                Start {sessionOrder === "sequential" ? "Sequential" : "Random"} Session
+              </button>
+            </div>
           </div>
         )}
 
@@ -3752,7 +3803,7 @@ function SettingsPage({
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
         <span className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-emerald-400/60" />
-          All data remains device-local unless you export it yourself.
+          Automatic JSON backups are saved in Documents / Recall OS Backups.
         </span>
         <span>Publisher: {COPYRIGHT_OWNER}</span>
       </div>
@@ -3767,6 +3818,21 @@ export default function App() {
   const [theme, setTheme] = useStoredTheme();
   const [activeView, setActiveView] = useState<NavigationId>("practice");
   const [activeCourse, setActiveCourse] = useState<CourseCode>(() => courses[0] ?? "");
+
+  useEffect(() => {
+    if (!window.recallBackup || questions.length === 0) return;
+    const timer = window.setTimeout(() => {
+      void window.recallBackup?.save({
+        version: 5,
+        exportedAt: new Date().toISOString(),
+        courses,
+        questions,
+        activityDates,
+        theme,
+      }).catch((error: unknown) => console.error("Automatic backup failed", error));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [questions, courses, activityDates, theme]);
 
   useEffect(() => {
     if (!activeCourse || !courses.includes(activeCourse)) {
