@@ -1,5 +1,6 @@
-const { app, BrowserWindow, net, protocol, session } = require('electron')
+const { app, BrowserWindow, ipcMain, net, protocol, session } = require('electron')
 const { spawn } = require('node:child_process')
+const fs = require('node:fs/promises')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
@@ -40,6 +41,22 @@ const APP_SCHEME = 'recall'
 const APP_HOST = 'desktop'
 const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`
 const DIST_DIRECTORY = path.join(__dirname, '..', 'dist')
+let backupSequence = 0
+
+ipcMain.handle('recall:save-backup', async (event, data) => {
+  if (!event.sender.getURL().startsWith(`${APP_ORIGIN}/`)) throw new Error('Untrusted backup source')
+  if (!data || !Array.isArray(data.questions) || data.questions.length === 0 || !Array.isArray(data.courses)) {
+    return false
+  }
+  const content = JSON.stringify(data, null, 2)
+  if (content.length > 100_000_000) throw new Error('Backup exceeds 100 MB')
+  const directory = path.join(app.getPath('documents'), 'Recall OS Backups')
+  await fs.mkdir(directory, { recursive: true })
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const file = path.join(directory, `study-data-${timestamp}-${++backupSequence}.json`)
+  await fs.writeFile(file, content, { flag: 'wx' })
+  return true
+})
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -97,6 +114,7 @@ function createMainWindow() {
     show: false,
     title: 'Recall OS',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

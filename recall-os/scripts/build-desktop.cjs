@@ -117,6 +117,10 @@ async function createPackagedApp() {
     path.join(stagingDirectory, 'electron', 'main.cjs'),
   )
   await fsPromises.copyFile(
+    path.join(projectDirectory, 'electron', 'preload.cjs'),
+    path.join(stagingDirectory, 'electron', 'preload.cjs'),
+  )
+  await fsPromises.copyFile(
     path.join(projectDirectory, 'LICENSE.md'),
     path.join(stagingDirectory, 'LICENSE.md'),
   )
